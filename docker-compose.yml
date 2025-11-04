@@ -1,0 +1,13 @@
+version: "3.9"
+services:
+  api:
+    build: .
+    image: ife-health-api:latest
+    restart: unless-stopped
+    network_mode: host
+    expose:
+      - "8001"
+    volumes:
+      - ./api_py/config.yaml:/app/api_py/config.yaml:ro
+      - ./www:/app/www:ro
+
