@@ -2,8 +2,10 @@
 <html lang="tr" data-theme="auto">
 <head>
   <meta charset="UTF-8" />
+  
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>IFE Health Dashboard</title>
+  
 <script>window.SERVICE_META = window.SERVICE_META || { bind9:{http:false}, nats_client:{http:false} };</script>
   <meta id="themeColor" name="theme-color" content="#0b1220">
   <style>
@@ -222,6 +224,9 @@
         <svg class="icon" id="refreshIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" aria-hidden="true"><path d="M4 4v6h6M20 20v-6h-6"/><path d="M20 8a 8 8 0 1 0 2 6" stroke-width="2"/></svg>
         Kontrol
       </button>
+
+        <a class="btn" href="/static/ip-service.html" title="IP alan cihazları görüntüle">IP-Service</a>
+
     </div>
   </header>
 
@@ -238,11 +243,11 @@
 
   <footer class="site-footer" role="contentinfo">
     <div class="footer-inner">
-      <span class="tag">@TCI</span>
+      <span class="tag">@TCI.DevOps Team</span>
       <span aria-hidden="true">•</span>
-      <span id="footMsg">Her 5sn bir restart atıyor</span>
+      <span id="footMsg">Refreshes Every 5 Seconds</span>
       <span class="sep" aria-hidden="true">•</span>
-      <span class="muted">Son restart: <time id="lastRestart">–:–:–</time></span>
+      <span class="muted">Last restart: <time id="lastRestart">–:–:–</time></span>
     </div>
   </footer>
 

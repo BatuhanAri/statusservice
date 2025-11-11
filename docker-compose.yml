@@ -4,10 +4,19 @@ services:
     build: .
     image: ife-health-api:latest
     restart: unless-stopped
+
+    
     network_mode: host
     expose:
       - "8001"
+
+    
     volumes:
       - ./api_py/config.yaml:/app/api_py/config.yaml:ro
       - ./www:/app/www:ro
+      - /var/lib/kea/kea-leases4.csv:/var/lib/kea/kea-leases4.csv:ro
+
+
+    command: uvicorn api_py.app:app --host 0.0.0.0 --port 8001
+
 
