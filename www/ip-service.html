@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="tr" data-theme="auto">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>IP-Service | IFE Health</title>
+  <meta id="themeColor" name="theme-color" content="#0b1220">
+  <style>
+    .tools input,
+.tools select,
+.tools button.btn {
+  background-color: #1a2238;
+  color: #ffffff;
+  border: 1px solid #334155;
+  transition: background-color .2s, border-color .2s;
+}
+.tools input::placeholder { color: #cbd5e1; }
+.tools select:hover,
+.tools input:focus,
+.tools button.btn:hover {
+  background-color: #24304d;
+  border-color: #475569;
+}
+.tools button.btn:active { background-color: #334155; }
+
+    :root{
+      --bg:#0b1220; --fg:#e8edf7; --muted:#9aa6b2;
+      --card:#0f172a; --bd:#1f2a44; --ok:#22c55e; --bad:#ef4444; --na:#324158;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Ubuntu,sans-serif;background:var(--bg);color:var(--fg)}
+    header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--bd)}
+    a.btn,button.btn{color:var(--fg);text-decoration:none;border:1px solid var(--bd);padding:8px 12px;border-radius:10px;background:transparent;cursor:pointer}
+    .wrap{max-width:1100px;margin:24px auto;padding:0 16px}
+    .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    input,select{background:transparent;color:var(--fg);border:1px solid var(--bd);padding:8px 10px;border-radius:10px;outline:none}
+    table{width:100%;border-collapse:separate;border-spacing:0 8px}
+    th,td{text-align:left;padding:10px 12px}
+    th{user-select:none;cursor:pointer;position:relative;}
+    th.sortable:hover{background-color:rgba(255,255,255,0.05);}
+    th .arrow{
+      margin-left:6px;font-size:0.8em;opacity:0.6;transition:transform .2s;
+    }
+    th.sorted-asc .arrow{opacity:1;transform:rotate(180deg);}
+    th.sorted-desc .arrow{opacity:1;}
+    tr{background:var(--card);border:1px solid var(--bd)}
+    tr > td:first-child, tr > th:first-child {border-top-left-radius:12px;border-bottom-left-radius:12px}
+    tr > td:last-child, tr > th:last-child {border-top-right-radius:12px;border-bottom-right-radius:12px}
+    .chip{display:inline-block;padding:2px 8px;border-radius:999px;font-size:.8rem;border:1px solid var(--bd);background:rgba(255,255,255,.03)}
+    .ok{color:var(--ok);border-color:rgba(34,197,94,.4)}
+    .bad{color:var(--bad);border-color:rgba(239,68,68,.4)}
+    .muted{color:var(--muted)}
+    .hint{color:var(--muted);font-size:.9rem;margin-top:8px}
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>IFE Health</strong> · <span class="muted">IP-Service</span></div>
+    <nav><a class="btn" href="/" title="Dashboard">Dashboard</a></nav>
+  </header>
+
+  <div class="wrap">
+    <div class="tools">
+      <input id="q" placeholder="Ara: ip / mac / hostname / client_id" />
+      <select id="state">
+        <option value="">Status: All</option>
+        <option value="active">Active</option>
+        <option value="other">Other</option>
+      </select>
+      <select id="sort">
+        <option value="ip">Sort: IP</option>
+        <option value="remain">Sort: Last Time</option>
+        <option value="hostname">Sort: Hostname</option>
+      </select>
+      <button class="btn" id="ref">Refresh</button>
+      <button class="btn" id="auto">Otomatic : Close</button>
+      <button class="btn" id="export">JSON Download</button>
+    </div>
+
+    <table>
+      <thead>
+        <tr>
+          <th>IP <span class="arrow">▼</span></th>
+          <th>MAC <span class="arrow">▼</span></th>
+          <th>Hostname <span class="arrow">▼</span></th>
+          <th>Client ID <span class="arrow">▼</span></th>
+          <th>Status</th>
+          <th>Termination <span class="arrow">▼</span></th>
+          <th>Last <span class="arrow">▼</span></th>
+          <th>Subnet <span class="arrow">▼</span></th>
+        </tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+
+    <div class="hint" id="meta"></div>
+  </div>
+
+<script>
+const $ = s=>document.querySelector(s);
+const rows=$("#rows"), meta=$("#meta"), q=$("#q"), state=$("#state"), sort=$("#sort");
+const btnRef=$("#ref"), btnAuto=$("#auto"), btnExport=$("#export");
+let autoTimer=null;
+let currentData = {items:[], count:0, meta:{}};
+let sortDir = 1; // 1: asc, -1: desc
+let sortKey = "ip";
+
+function fmtSeconds(s){
+  if(!s || s<=0) return "—";
+  const h=Math.floor(s/3600), m=Math.floor((s%3600)/60);
+  return (h?`${h}sa `:"") + (m?`${m}dk`:"");
+}
+
+function render(data){
+  currentData = data;
+  let items = data.items || [];
+  const needle=(q.value||"").toLowerCase().trim();
+  if(needle){
+    items = items.filter(x =>
+      (x.ip||"").includes(needle) ||
+      (x.mac||"").toLowerCase().includes(needle) ||
+      (x.hostname||"").toLowerCase().includes(needle) ||
+      (x.client_id||"").toLowerCase().includes(needle)
+    );
+  }
+  const st = state.value;
+  if(st==="active") items = items.filter(x => x.state===0 && (x.remaining_secs||0)>0);
+  if(st==="other")  items = items.filter(x => !(x.state===0 && (x.remaining_secs||0)>0));
+
+  items.sort((a,b)=>{
+    if(sortKey==="remaining_secs") return sortDir*((a.remaining_secs||0)-(b.remaining_secs||0));
+    const A=(a[sortKey]||"").toString().toLowerCase();
+    const B=(b[sortKey]||"").toString().toLowerCase();
+    return sortDir*A.localeCompare(B, 'tr');
+  });
+
+  rows.innerHTML = items.map(x=>`
+    <tr>
+      <td>${x.ip||""}</td>
+      <td><span class="chip">${x.mac||""}</span></td>
+      <td>${x.hostname||"—"}</td>
+      <td class="muted">${x.client_id||"—"}</td>
+      <td>${(x.state===0 && (x.remaining_secs||0)>0) ? '<span class="chip ok">aktif</span>' : '<span class="chip bad">pasif</span>'}</td>
+      <td class="muted">${x.expire_human||""}</td>
+      <td>${fmtSeconds(x.remaining_secs)}</td>
+      <td class="muted">${x.subnet_id||""}</td>
+    </tr>
+  `).join("");
+
+  const src = data.meta?.source || "kaynak yok";
+  const mth = data.meta?.mtime_human || "";
+  meta.textContent = `${items.length} kayıt gösteriliyor (toplam ${data.count}) · Kaynak: ${src} · Güncelleme: ${mth}`;
+
+  updateHeaderArrows();
+}
+
+function updateHeaderArrows(){
+  document.querySelectorAll("thead th").forEach(th=>{
+    th.classList.remove("sorted-asc","sorted-desc");
+    const span = th.querySelector(".arrow");
+    if(!span) return;
+    span.style.opacity="0.3";
+  });
+  const map = {
+    "ip":0,"mac":1,"hostname":2,"client_id":3,
+    "expire_human":5,"remaining_secs":6,"subnet_id":7
+  };
+  const idx = map[sortKey];
+  const th = document.querySelectorAll("thead th")[idx];
+  if(!th) return;
+  th.classList.add(sortDir===1?"sorted-asc":"sorted-desc");
+  const span = th.querySelector(".arrow");
+  if(span) span.style.opacity="1";
+}
+
+async function load(){
+  try{
+    const r = await fetch("/api/leases");
+    if(!r.ok){ rows.innerHTML = `<tr><td colspan="8">/api/leases okunamadı (${r.status})</td></tr>`; return; }
+    const data = await r.json();
+    render(data);
+  }catch(e){
+    rows.innerHTML = `<tr><td colspan="8">Hata: ${e}</td></tr>`;
+  }
+}
+
+function toggleAuto(){
+  if(autoTimer){
+    clearInterval(autoTimer); autoTimer=null; btnAuto.textContent="Otomatik: Kapalı";
+  }else{
+    load();
+    autoTimer = setInterval(load, 10000);
+    btnAuto.textContent="Otomatik: Açık (10sn)";
+  }
+}
+
+[q, state, sort].forEach(el => el.addEventListener("input", load));
+btnRef.addEventListener("click", load);
+btnAuto.addEventListener("click", toggleAuto);
+btnExport.addEventListener("click", ()=>window.open("/api/leases","_blank"));
+
+document.querySelectorAll("thead th").forEach(th=>{
+  if(!th.querySelector(".arrow")) return;
+  th.classList.add("sortable");
+  th.addEventListener("click",()=>{
+    const map = {
+      "IP":"ip","MAC":"mac","Hostname":"hostname","Client ID":"client_id",
+      "Sonlanma":"expire_human","Kalan":"remaining_secs","Subnet":"subnet_id"
+    };
+    const key = map[th.textContent.trim().replace("▲","").replace("▼","").trim()];
+    if(!key) return;
+    if(sortKey===key) sortDir*=-1; else {sortKey=key; sortDir=1;}
+    render(currentData);
+  });
+});
+
+load();
+</script>
+</body>
+</html>
