@@ -1,236 +1,186 @@
 pipeline {
-    agent any
+  agent any
 
-    environment {
-        GITHUB_TOKEN            = credentials('bitbucket-jenkins')
-        SONARQUBE_URL           = 'http://10.9.111.19:9000'
-        NEXUS_REPO_PATH         = "tci-docker-repo/statusservice"
-        NEXUS_REPO_URL          = "10.9.111.19:8083"
-        HOSTED_REPO_URL         = "http://10.9.111.19:8082/repository/docker-hosted/v2"
-        SONAR_PROJECT_KEY       = "statusservice"
-        CONTAINER_NAME          = "status-service"
-        REMOTE_HOST             = "ifeserver@192.168.0.2"
+  options {
+    timestamps()
+    skipDefaultCheckout(true)
+  }
 
-        // Dinamik değerler
-        COMMIT_HASH             = ''
-        TIMESTAMP               = ''
-        DOCKER_IMAGE_VERSION    = ''
-        IMAGE_TAG               = ''
-        GO_VERSION              = '1.25.0'
+  environment {
+    // Sabitler
+    GITHUB_TOKEN      = credentials('bitbucket-jenkins')
+    SONARQUBE_URL     = 'http://10.9.111.19:9000'
+    NEXUS_REPO_PATH   = "tci-docker-repo/statusservice"
+    NEXUS_REPO_URL    = "10.9.111.19:8083"
+    HOSTED_REPO_URL   = "http://10.9.111.19:8082/repository/docker-hosted/v2"
+    SONAR_PROJECT_KEY = "statusservice"
+    CONTAINER_NAME    = "status-service"
+    REMOTE_HOST       = "ifeserver@192.168.0.2"
+    GO_VERSION        = '1.25.0'
+    PATH              = "$HOME/.asdf/shims:$HOME/.asdf/bin:/usr/local/bin:$PATH"
+  }
 
-        // PATH güncellemesi: Go ve sonar-scanner kullanılabilir
-        PATH                    = "$HOME/.asdf/shims:$HOME/.asdf/bin:/usr/local/bin:$PATH"
+  stages {
+
+    stage('Checkout Code') {
+      steps {
+        checkout([
+          $class: 'GitSCM',
+          branches: [[name: '*/dev']],
+          userRemoteConfigs: [[
+            url: 'http://bitbucket.tci.aero/scm/sife_a321_is2/statusservice.git',
+            credentialsId: 'bitbucket-jenkins'
+          ]]
+        ])
+      }
     }
 
-    stages {
+    stage('Generate Image Tag') {
+      steps {
+        script {
+          // Git’ten kısa commit ve tarih oku (fallback’lerle)
+          def commit = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+          def ts     = sh(script: "git log -1 --format=%cd --date=short", returnStdout: true).trim()
+          if (!commit) { commit = "na" }
+          if (!ts)     { ts     = sh(script:"date +%F", returnStdout:true).trim() }
 
-        stage('Checkout Code') {
-            steps {
-                git credentialsId: 'bitbucket-jenkins', url: 'http://bitbucket.tci.aero/scm/sife_a321_is2/statusservice.git', branch: 'dev'
-            }
+          // Versiyon ve tag’ler
+          def ver    = "${ts}-${commit}"
+          def tag    = "${env.NEXUS_REPO_URL}/${env.NEXUS_REPO_PATH}:${ver}"
+          def sigTag = "${tag}-sign"
+
+          // --- SANDBOX UYUMLU ENV ATAMASI (DOT NOTASYONU) ---
+          env.COMMIT_HASH          = commit.toString()
+          env.TIMESTAMP            = ts.toString()
+          env.DOCKER_IMAGE_VERSION = ver.toString()
+          env.IMAGE_TAG            = tag.toString()
+          env.SIGN_IMAGE_TAG       = sigTag.toString()
+
+          echo "TIMESTAMP=${env.TIMESTAMP}"
+          echo "COMMIT_HASH=${env.COMMIT_HASH}"
+          echo "DOCKER_IMAGE_VERSION=${env.DOCKER_IMAGE_VERSION}"
+          echo "IMAGE_TAG=${env.IMAGE_TAG}"
+          echo "SIGN_IMAGE_TAG=${env.SIGN_IMAGE_TAG}"
         }
+      }
+    }
 
-        stage('Generate Image Tag') {
-            steps {
-                script { 
-                    COMMIT_HASH = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    TIMESTAMP   = sh(script: "git log -1 --format=%cd --date=short", returnStdout: true).trim()
-                    DOCKER_IMAGE_VERSION = "${TIMESTAMP}-${COMMIT_HASH}"
-                    IMAGE_TAG   = "${NEXUS_REPO_URL}/${NEXUS_REPO_PATH}:${DOCKER_IMAGE_VERSION}"
-                    SIGN_IMAGE_TAG = "${IMAGE_TAG}-sign"
-
-                    env.COMMIT_HASH = COMMIT_HASH
-                    env.TIMESTAMP   = TIMESTAMP
-                    env.DOCKER_IMAGE_VERSION = DOCKER_IMAGE_VERSION
-                    env.IMAGE_TAG   = IMAGE_TAG
-                    env.SIGN_IMAGE_TAG = SIGN_IMAGE_TAG
-
-                    echo "Generated Docker tag: ${DOCKER_IMAGE_VERSION}"
-                }
-            }
+    stage('Verify Generated Vars') {
+      steps {
+        script {
+          if (!env.IMAGE_TAG?.trim()) {
+            error "IMAGE_TAG empty! Check Generate Image Tag stage."
+          }
         }
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          : "IMAGE_TAG=${IMAGE_TAG}"
+          : "SIGN_IMAGE_TAG=${SIGN_IMAGE_TAG}"
+          : "DOCKER_IMAGE_VERSION=${DOCKER_IMAGE_VERSION}"
+        '''
+      }
+    }
 
-        // stage('Checkout Manifest Repo') {
-        //     steps {
-        //         dir('manifest') {
-        //             git credentialsId: 'bitbucket-jenkins', url: 'http://bitbucket.tci.aero/scm/tcim/tci-manifest.git', branch: 'master'
-        //         }
-        //     }
-        // }
+    stage('Build Docker Image') {
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          echo "DEBUG IMAGE_TAG=${IMAGE_TAG}"
+          docker build -t "${IMAGE_TAG}" .
+        '''
+      }
+    }
 
-        // stage('Version Control Check') {
-        //     steps {
-        //         script {
-        //             def currentVersion = sh(script: "grep 'image:' ./manifest/statusservice/deployment.yaml | awk -F ':' '{print \$NF}' | tr -d ' '", returnStdout: true).trim()
-        //             echo "Current deployment version: ${currentVersion}"
-        //             echo "New image version: ${DOCKER_IMAGE_VERSION}"
+    stage('Trivy Vulnerability Scan') {
+      steps {
+        sh '''#!/usr/bin/env bash
+          set -euo pipefail
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            aquasec/trivy:latest image \
+            --exit-code 1 --severity HIGH,CRITICAL "${IMAGE_TAG}"
+        '''
+      }
+    }
 
-        //             if (currentVersion == DOCKER_IMAGE_VERSION) {
-        //                 error("Deployment.yaml already has the latest version: ${DOCKER_IMAGE_VERSION}. Skipping build.")
-        //             }
-        //         }
-        //     }
-        // }
-
-        // stage('SonarQube Analysis') {
-        //     steps {
-        //         withCredentials([string(credentialsId: 'sonarqube-jenkins', variable: 'SONARQUBE_TOKEN')]) {
-        //             sh """
-        //                 sonar-scanner \
-        //                   -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
-        //                   -Dsonar.sources=. \
-        //                   -Dsonar.host.url=${SONARQUBE_URL} \
-        //                   -Dsonar.login=$SONARQUBE_TOKEN \
-        //                   -Dsonar.projectVersion=${DOCKER_IMAGE_VERSION}
-        //             """
-        //         }
-        //     }
-        // }
-
-        // stage('def environment') {
-        //     steps {
-        //         script {
-        //             env.SONAR_URL = "${SONARQUBE_URL}/dashboard?id=${SONAR_PROJECT_KEY}"
-        //             echo "SonarQube URL: ${env.SONAR_URL}"
-        //             echo "SonarQube Analysis Result: ${env.SONAR_URL}"
-        //         }
-        //     }
-        // }
-
-        stage('Build Docker Image') {
-            steps {
-                sh """
-                    pwd
-                    ls
-                    docker build -t ${IMAGE_TAG} .
-                """
-            }
+    stage('Push Docker Image to Nexus Repository') {
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+          sh '''#!/usr/bin/env bash
+            set -euo pipefail
+            echo "$PASS" | docker login "${NEXUS_REPO_URL}" -u "$USER" --password-stdin
+            docker push "${IMAGE_TAG}"
+          '''
         }
+      }
+    }
 
-        stage('Trivy Vulnerability Scan') {
-            steps {
-                sh """
-                    docker run --rm \
-                      -v /var/run/docker.sock:/var/run/docker.sock \
-                      aquasec/trivy:latest image \
-                      --exit-code 1 --severity HIGH,CRITICAL ${IMAGE_TAG}
-                """
-            }
-        }
-
-        stage('Push Docker Image to Nexus Repository') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                    sh """
-                        echo $PASS | docker login ${NEXUS_REPO_URL} -u $USER --password-stdin
-                        docker push ${IMAGE_TAG}
-                    """
-                }
-            }
-        }
-
-        stage('Cosign Sign Image') {
-            steps {
-                script {
-                    echo "Signing image: ${SIGN_IMAGE_TAG}"
-
-                    withCredentials([
-                        file(credentialsId: 'cosign-key', variable: 'COSIGN_KEY'),
-                        string(credentialsId: 'cosign-password', variable: 'COSIGN_PASSWORD')
-                    ]) {
-                        sh """
-                            echo "Signing image: ${SIGN_IMAGE_TAG}"
-                            #COSIGN_PASSWORD="$COSIGN_PASSWORD" 
-                            docker tag ${IMAGE_TAG} ${SIGN_IMAGE_TAG}
-                            docker push ${SIGN_IMAGE_TAG}
-                            cosign sign --yes --key "$COSIGN_KEY" "${SIGN_IMAGE_TAG}"
-                            docker rmi ${IMAGE_TAG} || true
-                        """
-                    }
-                }
-            }
-        }
-
-
-        stage('Cosign Verify Image') {
-            steps {
-                script {
-                    echo "Verifying signed image: ${SIGN_IMAGE_TAG}"
-
-                    withCredentials([
-                        file(credentialsId: 'cosign-pub', variable: 'COSIGN_PUB_KEY')
-                    ]) {
-                        sh """
-                            cosign verify --key "$COSIGN_PUB_KEY" "${SIGN_IMAGE_TAG}"
-                        """
-                    }
-                }
-            }
-        }
-
-
-
-        stage('delete unsinged image from nexus') {
-            steps {
-                withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
-                    sh"""
-                        curl -u $USER:$PASS -X DELETE $HOSTED_REPO_URL/$NEXUS_REPO_PATH/manifests/$DOCKER_IMAGE_VERSION
-                    """
-                }
-            }
-        }
-
-
-        stage('Deploy Docker Container to Remote IFESERVER') {
-            steps {
-                script {
-                    sh """  
-                        docker ps -q -f name=${CONTAINER_NAME} | xargs -r docker stop &&
-                        docker ps -a -q -f name=${CONTAINER_NAME} | xargs -r docker rm &&
-    
-                        docker run -d --restart unless-stopped --network host \\
-                            --name ${CONTAINER_NAME} \\
-                            ${SIGN_IMAGE_TAG} &&
-    
-                        rm /tmp/${CONTAINER_NAME}.tar
-                    """
-                }
-            }
-        }
-
-
-
-
-    //     stage('Update Deployment YAML') {
-    //         steps {
-    //             dir('manifest') {
-    //                 git credentialsId: 'bitbucket-jenkins', url: 'http://bitbucket.tci.aero/scm/tcim/tci-manifest.git', branch: 'master'
-    //                 script {
-    //                     sh "sed -i 's#\\(image: \\).*#\\1${IMAGE_TAG}#' ./statusservice/deployment.yaml"
-
-    //                     sh """
-    //                         git remote set-url origin http://${GITHUB_TOKEN}@bitbucket.tci.aero/scm/tcim/tci-manifest.git
-    //                         git config user.name "staylan"
-    //                         git config user.email "staylan@tci.aero"
-    //                         git add ./statusservice/deployment.yaml
-    //                         git commit -m "Update Docker image version to ${DOCKER_IMAGE_VERSION} in deployment.yaml"
-    //                         git push origin master
-    //                     """
-    //                 }
-    //             }
-    //         }
+    // stage('Cosign Sign Image') {
+    //   steps {
+    //     echo "Signing image: ${env.SIGN_IMAGE_TAG}"
+    //     withCredentials([
+    //       file(credentialsId: 'cosign-key', variable: 'COSIGN_KEY'),
+    //       string(credentialsId: 'cosign-password', variable: 'COSIGN_PASSWORD')
+    //     ]) {
+    //       sh '''#!/usr/bin/env bash
+    //         set -euo pipefail
+    //         echo "Signing image: ${SIGN_IMAGE_TAG}"
+    //         docker tag "${IMAGE_TAG}" "${SIGN_IMAGE_TAG}"
+    //         docker push "${SIGN_IMAGE_TAG}"
+    //         cosign sign --yes --key "${COSIGN_KEY}" "${SIGN_IMAGE_TAG}"
+    //         docker rmi "${IMAGE_TAG}" || true
+    //       '''
     //     }
+    //   }
+    // }
+
+    // stage('Cosign Verify Image') {
+    //   steps {
+    //     echo "Verifying signed image: ${env.SIGN_IMAGE_TAG}"
+    //     withCredentials([file(credentialsId: 'cosign-pub', variable: 'COSIGN_PUB_KEY')]) {
+    //       sh '''#!/usr/bin/env bash
+    //         set -euo pipefail
+    //         cosign verify --key "${COSIGN_PUB_KEY}" "${SIGN_IMAGE_TAG}"
+    //       '''
+    //     }
+    //   }
+    // }
+
+    // stage('Delete unsigned image from Nexus') {
+    //   steps {
+    //     withCredentials([usernamePassword(credentialsId: 'nexus-credentials', usernameVariable: 'USER', passwordVariable: 'PASS')]) {
+    //       sh '''#!/usr/bin/env bash
+    //         set -euo pipefail
+    //         # Not: Registry V2'de ideal olan digest ile DELETE atmaktır; gerekirse digest çıkarıp kullanırız.
+    //         curl -fsSL -u "$USER:$PASS" -X DELETE \
+    //           "${HOSTED_REPO_URL}/${NEXUS_REPO_PATH}/manifests/${DOCKER_IMAGE_VERSION}" || true
+    //       '''
+    //     }
+    //   }
+    // }
+
+    stage('Deploy Docker Container (Local Host)') {
+    steps {
+        sh '''#!/usr/bin/env bash
+        set -euo pipefail
+        docker ps -q -f name="${CONTAINER_NAME}" | xargs -r docker stop
+        docker ps -a -q -f name="${CONTAINER_NAME}" | xargs -r docker rm
+
+        docker run -d --restart unless-stopped \
+            -p 8081:8001 \
+            --name "${CONTAINER_NAME}" \
+            "${IMAGE_TAG}"
+
+        rm -f "/tmp/${CONTAINER_NAME}.tar" || true
+        '''
+    }
     }
 
-    post {
-        success {
-            echo 'Pipeline successfully completed!'
-        }
-        failure {
-            echo 'Pipeline failed. Check the logs for more details.'
-        }
-        always {
-            echo 'Pipeline has ended.'
-        }
-    }
+  }
+
+  post {
+    success { echo 'Pipeline successfully completed!' }
+    failure { echo 'Pipeline failed. Check the logs for more details.' }
+    always  { echo 'Pipeline has ended.' }
+  }
 }
