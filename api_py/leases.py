@@ -3,7 +3,9 @@ from fastapi import APIRouter, HTTPException
 from pathlib import Path
 import csv, time, os
 
-router = APIRouter(prefix="/api/leases", tags=["leases"])
+# ÖNEMLİ: prefix'i "/api" yapıyoruz
+router = APIRouter(prefix="/api", tags=["leases"])
+
 LEASES_CSV = Path("/var/lib/kea/kea-leases4.csv")
 
 EXPECTED_COLS = [
@@ -12,8 +14,10 @@ EXPECTED_COLS = [
 ]
 
 def _to_int(x):
-    try: return int(x)
-    except: return None
+    try:
+        return int(x)
+    except:
+        return None
 
 def _read_csv():
     if not LEASES_CSV.exists():
@@ -26,7 +30,6 @@ def _read_csv():
         reader = csv.reader(f)
         header = next(reader, None)
 
-        # header kontrolü
         has_header = isinstance(header, list) and header and header[0].strip().lower() == "address"
         idx = {}
         if has_header:
@@ -38,11 +41,11 @@ def _read_csv():
                 "address":0,"hwaddr":1,"client_id":2,"valid_lifetime":3,"expire":4,
                 "subnet_id":5,"fqdn_fwd":6,"fqdn_rev":7,"hostname":8,"state":9,"user_context":10
             }
-            # header yoksa ilk satır veri olarak işlenebilsin diye
-            if header: reader = [[*header], *list(reader)]
+            if header:
+                reader = [[*header], *list(reader)]
 
         for row in reader:
-            if not row or not row[0] or row[0].startswith("#"): 
+            if not row or not row[0] or row[0].startswith("#"):
                 continue
 
             def col(name, default=""):
@@ -68,13 +71,14 @@ def _read_csv():
                 "remaining_secs": remaining
             })
 
-    # IP’e göre sırala
     def ipkey(x):
-        try: return list(map(int, x["ip"].split(".")))
-        except: return [999,999,999,999]
+        try:
+            return list(map(int, x["ip"].split(".")))
+        except:
+            return [999, 999, 999, 999]
+
     items.sort(key=ipkey)
 
-    # dosyanın mtime’ını meta’ya koy
     mtime = int(os.path.getmtime(LEASES_CSV))
     return {
         "count": len(items),
@@ -86,6 +90,7 @@ def _read_csv():
         }
     }
 
-@router.get("", summary="Kea CSV -> JSON lease listesi")
+# ÖNEMLİ: path = "/leases"
+@router.get("/leases", summary="Kea CSV -> JSON lease listesi")
 def list_leases():
     return _read_csv()
