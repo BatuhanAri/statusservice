@@ -9,6 +9,7 @@ RUN pip install --no-cache-dir -r /app/api_py/requirements.txt
 
 # Uygulama
 COPY api_py /app/api_py
+COPY www /app/www
 # WWW klasörünü host’tan volume olarak vereceğiz (build’e koymuyoruz)
 
 ENV PYTHONUNBUFFERED=1
