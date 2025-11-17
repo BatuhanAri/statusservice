@@ -2,7 +2,7 @@ version: "3.9"
 services:
   api:
     build: .
-    image: ife-health-api:latest
+    image: ${IMAGE_NAME:-batuhanari/statusservice:latest}
     restart: unless-stopped
 
     
