@@ -30,6 +30,7 @@ cfg = load_cfg()
 app = FastAPI(title="IFE Health")
 # -----------------------------
 # System Services router
+from .host_health import router as host_health_router
 app.include_router(host_health_router)
 
 
@@ -57,7 +58,7 @@ def ip_service_page():
 # Leases router (Kea CSV -> JSON)
 # -----------------------------
 from .leases import router as leases_router
-app.include_router(leases_router)   # leases_router kendi içinde prefix="/api/leases"
+app.include_router(leases_router)   
 
 # -----------------------------
 # Health / Problama (mevcut hedef kontrolleri)
