@@ -15,6 +15,8 @@ services:
       - ./api_py/config.yaml:/app/api_py/config.yaml:ro
       - ./www:/app/www:ro
       - /var/lib/kea/kea-leases4.csv:/var/lib/kea/kea-leases4.csv:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+
 
 
     command: uvicorn api_py.app:app --host 0.0.0.0 --port 8001
