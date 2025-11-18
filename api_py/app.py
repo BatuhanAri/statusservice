@@ -28,6 +28,10 @@ cfg = load_cfg()
 # FastAPI uygulaması
 # -----------------------------
 app = FastAPI(title="IFE Health")
+# -----------------------------
+# System Services router
+app.include_router(host_health_router)
+
 
 # Statik dosyaları /static altında ver (güvenli tercih)
 app.mount("/static", StaticFiles(directory=str(WWW)), name="static")
