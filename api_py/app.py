@@ -33,6 +33,10 @@ app = FastAPI(title="IFE Health")
 from .host_health import router as host_health_router
 app.include_router(host_health_router)
 
+# -----------------------------
+# Docker Services router
+from .docker_services import router as docker_services_router
+app.include_router(docker_services_router)
 
 # Statik dosyaları /static altında ver (güvenli tercih)
 app.mount("/static", StaticFiles(directory=str(WWW)), name="static")

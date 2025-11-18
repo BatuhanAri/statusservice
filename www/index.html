@@ -218,294 +218,242 @@
   </footer>
 
   <script type="module">
-    // Basit ayarlar
-    const CONFIG = {
-      POLL_MS: 5000,
-      HEALTH_URL: '/api/health',
-      SYSTEMD_URL: '/api/system-services',
+  const CONFIG = {
+    POLL_MS: 5000,
+    SYSTEMD_URL: '/api/system-services',
+    DOCKER_URL: '/api/docker-services',
+    STATIC_SYSTEMD_IDS: ['bind9', 'kea', 'nginx'],  // sadece bunları al
+  };
+
+  // ---------- Mini yardımcılar ----------
+  function el(tag, attrs = {}, children = []) {
+    const node = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) {
+      if (v == null) continue;
+      if (k === 'className') node.className = v;
+      else if (k in node) node[k] = v;
+      else node.setAttribute(k, String(v));
+    }
+    if (!Array.isArray(children)) children = [children];
+    for (const c of children) {
+      if (c == null) continue;
+      node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+    }
+    return node;
+  }
+
+  const chip = (cls, title) =>
+    el('span', { className: `chip ${cls}`, title: title || '' });
+
+  const rh = (state) => el('span', { className: `rh ${state}` });
+
+  async function fetchJSON(url) {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
+    return res.json();
+  }
+
+  // ---------- Normalizasyon ----------
+  function normalizeSystemd(item) {
+    const id = (item.id || '').toLowerCase();
+    if (!CONFIG.STATIC_SYSTEMD_IDS.includes(id)) return null; // sadece bind/kea/nginx
+
+    const ok = item.state === 'up';
+    return {
+      key: id,
+      name: item.name || id.toUpperCase(),
+      type: 'systemd',
+      ok,
+      statusText: item.state || 'unknown',
+      extraLabel: 'Unit',
+      extraValue: item.unit || '',
     };
+  }
 
-    const SERVICE_META = window.SERVICE_META || {};
-
-    // Küçük yardımcı fonksiyonlar
-    function createEl(tag, attrs = {}, children = []) {
-      const node = document.createElement(tag);
-      for (const [k, v] of Object.entries(attrs)) {
-        if (v == null) continue;
-        if (k === 'className') node.className = v;
-        else if (k in node) node[k] = v;
-        else node.setAttribute(k, String(v));
-      }
-      if (!Array.isArray(children)) children = [children];
-      for (const ch of children) {
-        if (ch == null) continue;
-        node.append(ch instanceof Node ? ch : document.createTextNode(String(ch)));
-      }
-      return node;
-    }
-
-    const chip = (cls, title) =>
-      createEl('span', { className: `chip ${cls}`, title: title || '' });
-
-    const chipBool = (val) => {
-      if (val === true) return chip('ok', 'OK');
-      if (val === false) return chip('bad', 'Hata');
-      return chip('na', 'NA');
+  function normalizeDocker(item) {
+    const running = item.running === true || /^up/i.test(item.status || '');
+    return {
+      key: item.name || item.id,
+      name: item.name || item.id,
+      type: 'docker',
+      ok: running,
+      statusText: item.status || (running ? 'running' : 'stopped'),
+      extraLabel: 'Image',
+      extraValue: item.image || '',
     };
+  }
 
-    const rh = (state) =>
-      createEl('span', { className: `rh ${state}` });
-
-    function httpApplicable(obj) {
-      return 'http_ok' in obj || 'status' in obj || 'error' in obj || 'http_path' in obj;
-    }
-
-    function isHealthy(obj) {
-      const presentOk = obj.present === true;
-      const portOk = obj.port_ok === true;
-      const httpOk = httpApplicable(obj) ? obj.http_ok === true : true;
-      return presentOk && portOk && httpOk;
-    }
-
-    function stateClass(obj) {
-      return isHealthy(obj) ? 'ok' : 'bad';
-    }
-
-    // Port / host / path rozetleri
-    function makeBadges(name, obj) {
-      const meta = { ...(SERVICE_META[name] || {}), ...(obj || {}) };
-      const proto =
-        'http_path' in meta || 'expect_status' in meta || 'http_ok' in meta
-          ? 'HTTP'
-          : 'TCP';
-      const items = [];
-
-      if (meta.port != null) {
-        items.push(
-          createEl('span', { className: 'badge' }, [
-            createEl('span', { className: 'proto', textContent: proto }),
-            createEl('span', { textContent: ':' }),
-            createEl('code', { textContent: String(meta.port) }),
-          ]),
-        );
-      }
-      if (meta.host) {
-        items.push(
-          createEl('span', { className: 'badge' }, [
-            createEl('span', { className: 'proto', textContent: 'HOST' }),
-            createEl('span', { textContent: ':' }),
-            createEl('code', { textContent: String(meta.host) }),
-          ]),
-        );
-      }
-      if (proto === 'HTTP' && meta.http_path) {
-        items.push(
-          createEl('span', { className: 'badge' }, [
-            createEl('span', { className: 'proto', textContent: 'PATH' }),
-            createEl('span', { textContent: ':' }),
-            createEl('code', { textContent: String(meta.http_path) }),
-          ]),
-        );
-      }
-
-      return items.length
-        ? createEl('div', { className: 'badges' }, items)
-        : null;
-    }
-
-    function makeRow(label, valueNode) {
-      return createEl('div', { className: 'row' }, [
-        createEl('span', { className: 'label', textContent: label }),
-        createEl('span', { className: 'val' }, valueNode),
-      ]);
-    }
-
-    function makeDivider() {
-      return createEl('div', { className: 'hr' });
-    }
-
-    // Systemd map: { BIND9: {state:'up'}, ... }
-    function buildSystemdMap(list) {
-      const map = {};
-      if (Array.isArray(list)) {
-        for (const item of list) {
-          const key = (item.id || '').toUpperCase();
-          if (key) map[key] = item;
-        }
-      }
-      return map;
-    }
-
-    // Kart üretimi
-    function makeCard(name, obj, systemdMap) {
-      const merged = { ...(SERVICE_META[name] || {}), ...(obj || {}) };
-      const cls = stateClass(merged);
-      const section = createEl('section', {
-        className: `card ${cls}`,
-        tabindex: 0,
-      });
-
-      const title = createEl('h2', {}, [
-        createEl('span', { textContent: name.toUpperCase() }),
-        rh(cls),
-      ]);
-
-      const badges = makeBadges(name, merged);
-
-      const rows = [];
-
-      rows.push(makeRow('Present', chipBool(merged.present)));
-      rows.push(makeRow('Port', chipBool(merged.port_ok)));
-
-      if (httpApplicable(merged)) {
-        rows.push(makeRow('HTTP', chipBool(merged.http_ok)));
-      }
-
-      // Systemd satırı sadece BIND9/NGINX/KEA/DOCKER için
-      const upper = name.toUpperCase();
-      if (['BIND9', 'NGINX', 'KEA', 'DOCKER'].includes(upper)) {
-        const sys = systemdMap[upper];
-        if (sys && sys.state) {
-          const st = sys.state; // up/down/unknown
-          const chipCls = st === 'up' ? 'ok' : st === 'down' ? 'bad' : 'na';
-          rows.push(makeRow('Systemd', chip(chipCls, st)));
-        }
-      }
-
-      rows.push(makeDivider());
-
-      const portErr = Boolean(merged?.errors?.port);
-      const httpErr = Boolean(merged?.errors?.http);
-
-      rows.push(makeRow('Port Hatası', chip(portErr ? 'bad' : 'ok', portErr ? 'Hata' : 'Yok')));
-      if (httpApplicable(merged)) {
-        rows.push(makeRow('HTTP Hatası', chip(httpErr ? 'bad' : 'ok', httpErr ? 'Hata' : 'Yok')));
-      }
-
-      const meta = createEl('div', { className: 'meta' }, rows);
-
-      section.append(title);
-      if (badges) section.append(badges);
-      section.append(meta);
-
-      return section;
-    }
-
-    // DOM referansları
-    const gridEl = document.getElementById('grid');
-    const loadingEl = document.getElementById('loading');
-    const statTotal = document.getElementById('statTotal');
-    const statOk = document.getElementById('statOk');
-    const statBad = document.getElementById('statBad');
-    const scoreEl = document.getElementById('score');
-    const scoreVal = document.getElementById('scoreVal');
-    const pollStateEl = document.getElementById('pollState');
-    const lastRestartEl = document.getElementById('lastRestart');
-
-    let pollId = null;
-
-    function setLoading(on) {
-      loadingEl.style.display = on ? 'block' : 'none';
-    }
-
-    function updateStats(objs) {
-      const total = objs.length;
-      const okCount = objs.filter(isHealthy).length;
-      const badCount = total - okCount;
-      const score = total ? Math.round((okCount / total) * 100) : 0;
-
-      statTotal.textContent = total;
-      statOk.textContent = okCount;
-      statBad.textContent = badCount;
-      scoreEl.style.setProperty('--p', score);
-      scoreVal.textContent = `${score}%`;
-    }
-
-    async function loadOnce() {
-      try {
-        setLoading(true);
-        gridEl.innerHTML = '';
-
-        const [healthData, systemdList] = await Promise.all([
-          fetch(CONFIG.HEALTH_URL).then(r => r.json()),
-          fetch(CONFIG.SYSTEMD_URL).then(r => r.json()).catch(() => []),
-        ]);
-
-        const systemdMap = buildSystemdMap(systemdList);
-        const entries = Object.entries(healthData);
-        const cards = [];
-
-        for (const [name, obj] of entries) {
-          cards.push(makeCard(name, obj, systemdMap));
-        }
-
-        gridEl.replaceChildren(...cards);
-        updateStats(entries.map(([, o]) => o));
-
-        if (lastRestartEl) {
-          lastRestartEl.textContent = new Date().toLocaleTimeString('tr-TR', { hour12: false });
-        }
-      } catch (err) {
-        console.error(err);
-        gridEl.textContent = 'API hatası: ' + err.message;
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    function startPolling() {
-      if (pollId) return;
-      pollId = setInterval(loadOnce, CONFIG.POLL_MS);
-      pollStateEl.textContent = 'Polling açık';
-    }
-
-    function stopPolling() {
-      if (!pollId) return;
-      clearInterval(pollId);
-      pollId = null;
-      pollStateEl.textContent = 'Polling kapalı';
-    }
-
-    document.addEventListener('visibilitychange', () => {
-      if (document.hidden) stopPolling();
-      else startPolling();
+  // ---------- Kart üretimi ----------
+  function makeCard(svc) {
+    const stateCls = svc.ok ? 'ok' : 'bad';
+    const section = el('section', {
+      className: `card ${stateCls}`,
+      tabindex: 0,
     });
 
-    // Refresh butonu
-    const refreshBtn = document.getElementById('refresh');
-    const refreshIcon = document.getElementById('refreshIcon');
-    refreshBtn.addEventListener('click', async () => {
-      refreshIcon.classList.add('spin');
-      await loadOnce();
-      refreshIcon.classList.remove('spin');
-    });
+    const title = el('h2', {}, [
+      el('span', { textContent: svc.name }),
+      rh(stateCls),
+    ]);
 
-    // Basit tema butonu (dark / light toggle)
-    const themeBtn = document.getElementById('theme');
-    const themeIcon = document.getElementById('themeIcon');
-    const THEME_KEY = 'ife.theme.simple';
-
-    function applyTheme(mode) {
-      document.documentElement.setAttribute('data-theme', mode);
-      localStorage.setItem(THEME_KEY, mode);
-      themeBtn.title = `Tema: ${mode}`;
-      const color = mode === 'light' ? '#f7f9fc' : '#0b1220';
-      document.getElementById('themeColor').setAttribute('content', color);
-      // ikon çok önemli değil, default dursun
+    const badges = [];
+    badges.push(
+      el('span', { className: 'badge' }, [
+        el('span', { className: 'proto', textContent: 'TYPE' }),
+        el('span', { textContent: ':' }),
+        el('code', { textContent: svc.type }),
+      ]),
+    );
+    if (svc.extraValue) {
+      badges.push(
+        el('span', { className: 'badge' }, [
+          el('span', { className: 'proto', textContent: svc.extraLabel }),
+          el('span', { textContent: ':' }),
+          el('code', { textContent: svc.extraValue }),
+        ]),
+      );
     }
+    const badgesWrap = el('div', { className: 'badges' }, badges);
 
-    function toggleTheme() {
-      const current = localStorage.getItem(THEME_KEY) || 'dark';
-      const next = current === 'dark' ? 'light' : 'dark';
-      applyTheme(next);
+    const rows = [];
+    rows.push(
+      el('div', { className: 'row' }, [
+        el('span', { className: 'label', textContent: 'Durum' }),
+        el('span', { className: 'val' }, chip(svc.ok ? 'ok' : 'bad', svc.statusText)),
+      ]),
+    );
+
+    const meta = el('div', { className: 'meta' }, rows);
+
+    section.append(title, badgesWrap, meta);
+    return section;
+  }
+
+  // ---------- DOM referansları ----------
+  const gridEl = document.getElementById('grid');
+  const loadingEl = document.getElementById('loading');
+  const statTotal = document.getElementById('statTotal');
+  const statOk = document.getElementById('statOk');
+  const statBad = document.getElementById('statBad');
+  const scoreEl = document.getElementById('score');
+  const scoreVal = document.getElementById('scoreVal');
+  const pollStateEl = document.getElementById('pollState');
+  const lastRestartEl = document.getElementById('lastRestart');
+
+  let pollId = null;
+
+  function setLoading(on) {
+    loadingEl.style.display = on ? 'block' : 'none';
+  }
+
+  function updateStats(services) {
+    const total = services.length;
+    const okCount = services.filter((s) => s.ok).length;
+    const badCount = total - okCount;
+    const score = total ? Math.round((okCount / total) * 100) : 0;
+
+    statTotal.textContent = total;
+    statOk.textContent = okCount;
+    statBad.textContent = badCount;
+    scoreEl.style.setProperty('--p', score);
+    scoreVal.textContent = `${score}%`;
+  }
+
+  async function loadOnce() {
+    try {
+      setLoading(true);
+      gridEl.innerHTML = '';
+
+      const [systemdList, dockerList] = await Promise.all([
+        fetchJSON(CONFIG.SYSTEMD_URL),
+        fetchJSON(CONFIG.DOCKER_URL).catch(() => []),
+      ]);
+
+      const services = [];
+
+      // statik systemd servisleri (bind/kea/nginx)
+      if (Array.isArray(systemdList)) {
+        for (const item of systemdList) {
+          const s = normalizeSystemd(item);
+          if (s) services.push(s);
+        }
+      }
+
+      // docker ps -a dan gelenler
+      if (Array.isArray(dockerList)) {
+        for (const item of dockerList) {
+          services.push(normalizeDocker(item));
+        }
+      }
+
+      // basitçe: önce systemd, sonra docker
+      const cards = services.map(makeCard);
+      gridEl.replaceChildren(...cards);
+      updateStats(services);
+
+      if (lastRestartEl) {
+        lastRestartEl.textContent = new Date().toLocaleTimeString('tr-TR', {
+          hour12: false,
+        });
+      }
+    } catch (err) {
+      console.error(err);
+      gridEl.textContent = 'API hatası: ' + err.message;
+    } finally {
+      setLoading(false);
     }
+  }
 
-    themeBtn.addEventListener('click', toggleTheme);
-    applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+  function startPolling() {
+    if (pollId) return;
+    pollId = setInterval(loadOnce, CONFIG.POLL_MS);
+    pollStateEl.textContent = 'Polling açık';
+  }
 
-    // İlk yükleme
+  function stopPolling() {
+    if (!pollId) return;
+    clearInterval(pollId);
+    pollId = null;
+    pollStateEl.textContent = 'Polling kapalı';
+  }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopPolling();
+    else startPolling();
+  });
+
+  // Refresh butonu
+  const refreshBtn = document.getElementById('refresh');
+  const refreshIcon = document.getElementById('refreshIcon');
+  refreshBtn.addEventListener('click', async () => {
+    refreshIcon.classList.add('spin');
     await loadOnce();
-    startPolling();
-  </script>
+    refreshIcon.classList.remove('spin');
+  });
+
+  // Tema: sadece dark / light toggle
+  const themeBtn = document.getElementById('theme');
+  const THEME_KEY = 'ife.theme.simple';
+
+  function applyTheme(mode) {
+    document.documentElement.setAttribute('data-theme', mode);
+    localStorage.setItem(THEME_KEY, mode);
+    const color = mode === 'light' ? '#f7f9fc' : '#0b1220';
+    document.getElementById('themeColor').setAttribute('content', color);
+  }
+
+  function toggleTheme() {
+    const current = localStorage.getItem(THEME_KEY) || 'dark';
+    const next = current === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+  }
+
+  themeBtn.addEventListener('click', toggleTheme);
+  applyTheme(localStorage.getItem(THEME_KEY) || 'dark');
+
+  // İlk yükleme
+  await loadOnce();
+  startPolling();
+</script>
 </body>
 </html>
