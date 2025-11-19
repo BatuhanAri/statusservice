@@ -24,8 +24,9 @@ def _docker_ps():
             ],
             text=True,
         )
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="docker CLI bulunamadı")
+    except FileNotFoundError as err:
+        print(f"Hata: {err}")
+        raise HTTPException(status_code=500, detail=err)
     except subprocess.CalledProcessError as exc:
         raise HTTPException(status_code=500, detail=f"docker ps -a hatası: {exc}")  # type: ignore
 

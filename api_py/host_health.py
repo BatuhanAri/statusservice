@@ -93,7 +93,12 @@ def get_system_services():
     """
     API endpoint: GET /api/system-services
     """
-    return list_services()
+    try:
+        
+        return list_services()
+        
+    except Exception as exc:
+        return {"error": str(exc)}
 
 
 def main() -> None:
