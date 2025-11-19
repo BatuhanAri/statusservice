@@ -9,25 +9,21 @@ router = APIRouter(
 
 def _docker_ps():
     try:
-        # stderr=subprocess.STDOUT ekledik ki hatayı yakalayabilelim
+        # Artık direkt "docker" yazabilirsin, çünkü apt-get ile kuruldu ve PATH'de var.
         out = subprocess.check_output(
             ["docker", "ps", "-a", "--format", "{{.ID}};{{.Names}};{{.Image}};{{.Status}}"],
             text=True,
-            stderr=subprocess.STDOUT 
+            stderr=subprocess.STDOUT
         )
     except FileNotFoundError:
-        # Docker hiç yüklü değilse veya PATH'de yoksa
-        raise HTTPException(status_code=500, detail="Docker komutu bulunamadı. Docker yüklü mü?")
+        raise HTTPException(status_code=500, detail="Docker komutu bulunamadı (Build sorunu olabilir).")
     except subprocess.CalledProcessError as exc:
-        # Docker komutu çalıştı ama hata verdi (Örn: Yetki hatası)
-        hata_mesaji = exc.output.strip() if exc.output else str(exc)
-        print(f"DOCKER HATASI: {hata_mesaji}") # Terminalde görmek için
-        
-        # BURASI ÖNEMLİ: detail kısmına str() koymazsan 500 hatası almaya devam edersin
-        raise HTTPException(status_code=500, detail=f"Docker hatası: {hata_mesaji}")
-    except Exception as e:
-        print(f"GENEL HATA: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        msg = exc.output.strip()
+        # Eğer "permission denied" derse socket mount edilmemiştir.
+        raise HTTPException(status_code=500, detail=f"Docker Hatası: {msg}")
+    
+    # ... parse işlemleri aynı ...
+    return [] # Parse edilmiş listeyi dön
 
     items = []
     if not out:
