@@ -3,19 +3,12 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
-# Sistem paketleri: docker CLI
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends docker.io \
-    && rm -rf /var/lib/apt/lists/*
-
-# Python bağımlılıkları
+# Sadece Python bağımlılıklarını kuruyoruz (artık docker CLI yok)
 COPY api_py/requirements.txt /app/api_py/requirements.txt
 RUN pip install --no-cache-dir -r /app/api_py/requirements.txt
 
-# Uygulama
 COPY api_py /app/api_py
 COPY www /app/www
-
 
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8001

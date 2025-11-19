@@ -1,51 +1,50 @@
-# api_py/docker_services.py (Güncellenmiş Hali)
+import docker
 from fastapi import APIRouter, HTTPException
-import subprocess
+import os
 
 router = APIRouter(
     prefix="/api/docker-services",
     tags=["docker-services"],
 )
 
-def _docker_ps():
-    try:
-        # Artık direkt "docker" yazabilirsin, çünkü apt-get ile kuruldu ve PATH'de var.
-        out = subprocess.check_output(
-            ["docker", "ps", "-a", "--format", "{{.ID}};{{.Names}};{{.Image}};{{.Status}}"],
-            text=True,
-            stderr=subprocess.STDOUT
-        )
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="Docker komutu bulunamadı (Build sorunu olabilir).")
-    except subprocess.CalledProcessError as exc:
-        msg = exc.output.strip()
-        # Eğer "permission denied" derse socket mount edilmemiştir.
-        raise HTTPException(status_code=500, detail=f"Docker Hatası: {msg}")
-    
-    # ... parse işlemleri aynı ...
-    return [] # Parse edilmiş listeyi dön
-
-    items = []
-    if not out:
-        return items
-
-    for line in out.splitlines():
-        line = line.strip()
-        if not line: continue
-        parts = line.split(";", 3)
-        if len(parts) != 4: continue
-        
-        cid, name, image, status = parts
-        items.append({
-            "id": cid,
-            "name": name,
-            "image": image,
-            "status": status,
-            "running": status.lower().startswith("up"),
-            "kind": "docker",
-        })
-    return items
-
 @router.get("")
 def list_docker_services():
-    return _docker_ps()
+    """
+    Docker soketi üzerinden aktif konteynerleri listeler.
+    CLI kurulumuna ihtiyaç duymaz, sadece socket bağlantısı ister.
+    """
+    try:
+        # Docker istemcisini başlat (Ortam değişkenlerinden veya soketten otomatik algılar)
+        client = docker.from_env()
+        
+        containers = client.containers.list(all=True)
+        items = []
+        
+        for c in containers:
+            # İsim temizliği (Docker API bazen isimlerin başına / koyar)
+            name = c.name.lstrip("/")
+            
+            # Resim etiketi kontrolü
+            image_tag = c.image.tags[0] if c.image.tags else "unknown-image"
+            
+            items.append({
+                "id": c.short_id,
+                "name": name,
+                "image": image_tag,
+                "status": c.status,
+                "running": c.status == "running",
+                "kind": "docker",
+            })
+            
+        return items
+
+    except docker.errors.DockerException as e:
+        # Bu hata genellikle /var/run/docker.sock bağlı değilse alınır
+        print(f"Docker Bağlantı Hatası: {e}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Docker daemon'a bağlanılamadı. Socket bağlı mı? Hata: {str(e)}"
+        )
+    except Exception as e:
+        print(f"Genel Hata: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
