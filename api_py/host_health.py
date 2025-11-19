@@ -96,8 +96,9 @@ def get_system_services():
     try:
         
         return list_services()
-        
+
     except Exception as exc:
+        print(f"Hata: {exc}")
         return {"error": str(exc)}
 
 
