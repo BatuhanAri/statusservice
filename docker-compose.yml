@@ -16,6 +16,8 @@ services:
       - ./www:/app/www:ro
       - /var/lib/kea/kea-leases4.csv:/var/lib/kea/kea-leases4.csv:ro
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/systemctl:/usr/bin/systemctl:ro
+
 
 
 

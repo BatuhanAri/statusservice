@@ -45,9 +45,6 @@ SERVICES = [
     },
 ]
 
-
-# api_py/host_health.py içerisinde
-
 def check_systemd(unit: str) -> str:
     """
     systemctl is-active <unit>
@@ -71,10 +68,8 @@ def check_systemd(unit: str) -> str:
             return "down"
             
     except FileNotFoundError:
-        print(f"HATA: '{CMD}' komutu bulunamadı. Lütfen 'which systemctl' ile yolu kontrol edin.")
         return "unknown"
     except Exception as e:
-        print(f"HATA: {unit} kontrol edilirken beklenmedik hata: {str(e)}")
         return "unknown"
 
 
