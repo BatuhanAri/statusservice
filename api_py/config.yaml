@@ -8,7 +8,7 @@ targets:
     port: 53
     present:
       type: tcp
-    version_path: "named -v"
+    version_cmd: "named -v"
                  
 
   - name: nginx
@@ -18,7 +18,7 @@ targets:
     expect_status: [200,301,302,401,403]
     present:
       type: http      
-    version_path: "nginx -v 2>&1"
+    version_cmd: "nginx -v 2>&1"
        
 
   - name: kea
@@ -26,7 +26,7 @@ targets:
     port: 8000
     present:
       type: tcp
-    version_path: "kea-dhcp4 -V"
+    version_cmd: "kea-dhcp4 -V"
 
 
   - name: jenkins
