@@ -46,7 +46,7 @@ SERVICES = [
 ]
 
 
-d# api_py/host_health.py içerisinde
+# api_py/host_health.py içerisinde
 
 def check_systemd(unit: str) -> str:
     """
