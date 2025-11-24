@@ -94,6 +94,75 @@ async def http_check(host: str, port: int, path: str, timeout_ms: int, tls: bool
     except Exception as e:
         return {"http_ok": False, "error": str(e)}
 
+def fetch_version_cmd(t: Dict[str, Any]) -> Optional[str]:
+    """
+    target config içinde version_cmd varsa, o komutu çalıştırır,
+    çıktıdan ilk satırı alıp döner.
+    """
+    cmd = t.get("version_cmd")
+    if not cmd:
+        return None
+
+    try:
+        out = subprocess.check_output(
+            cmd,
+            shell=True,
+            stderr=subprocess.STDOUT,
+            timeout=2
+        )
+        text = out.decode(errors="ignore").strip()
+        if not text:
+            return None
+        line = text.splitlines()[0]
+        return line[:64]
+    except Exception:
+        return None
+
+
+
+async def fetch_version_http(t: Dict[str, Any], timeout_ms: int) -> Optional[str]:
+    """
+    target config içinde version_path varsa, host+port+path'e HTTP GET atar,
+    JSON ise version/app_version/build gibi alanları, değilse raw text'ten
+    küçük bir parça döner.
+    """
+    vpath = t.get("version_path")
+    if not vpath:
+        return None
+
+    host = str(t["host"])
+    port = int(t["port"])
+    tls  = bool(t.get("tls"))
+
+    if not vpath.startswith("/"):
+        vpath = "/" + vpath
+
+    base = f"{'https' if tls else 'http'}://{host}:{port}"
+    url  = base + vpath
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_ms/1000) as cli:
+            r = await cli.get(url)
+    except Exception:
+        return None
+
+    if r.status_code < 200 or r.status_code >= 300:
+        return None
+
+    try:
+        data = r.json()
+        for key in ("version", "app_version", "build", "tag", "commit"):
+            if key in data:
+                return str(data[key])
+    except Exception:
+        txt = (r.text or "").strip()
+        if txt:
+            return txt[:64]
+
+    return None
+
+
+
 async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     res: Dict[str, Any] = {"present": True}
 
@@ -114,13 +183,23 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
         if "error" in h:
             res.setdefault("errors", {})["http"] = h["error"]
 
-    # Rozetler için metadata (UI)
+    # 🔹 VERSION (HTTP varsa version_path, yoksa version_cmd)
+    version: Optional[str] = None
+    if t.get("version_path"):
+        # eğer daha önce HTTP version_path için async helper yazdıysan burada kullan
+        version = await fetch_version_http(t, timeout_ms)  # varsa
+    elif t.get("version_cmd"):
+        version = fetch_version_cmd(t)
+
+    res["version"] = version  # HER serviste key var
+
+    # Rozetler için metadata
     res["host"] = str(t.get("host"))
     res["port"] = int(t.get("port")) if t.get("port") is not None else None
     if t.get("http_path") is not None:
         res["http_path"] = str(t.get("http_path"))
 
-    # ---- PRESENT HESAPLAMA ----
+    # ---- PRESENT HESAPLAMA (senin kodun) ----
     pres = t.get("present", {}) or {}
     ptype = pres.get("type", "auto")
 
@@ -177,6 +256,8 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
         res["present"] = present_auto()
 
     return res
+
+
 
 async def perform() -> Dict[str, Any]:
     ts: List[Dict[str, Any]] = cfg["targets"]

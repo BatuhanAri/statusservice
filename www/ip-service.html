@@ -204,8 +204,13 @@ document.querySelectorAll("thead th").forEach(th=>{
   th.classList.add("sortable");
   th.addEventListener("click",()=>{
     const map = {
-      "IP":"ip","MAC":"mac","Hostname":"hostname","Client ID":"client_id",
-      "Sonlanma":"expire_human","Kalan":"remaining_secs","Subnet":"subnet_id"
+      "IP": "ip",
+      "MAC": "mac",
+      "Hostname": "hostname",
+      "Client ID": "client_id",
+      "Termination": "expire_human",
+      "Last": "remaining_secs",
+      "Subnet": "subnet_id"
     };
     const key = map[th.textContent.trim().replace("▲","").replace("▼","").trim()];
     if(!key) return;
@@ -213,6 +218,7 @@ document.querySelectorAll("thead th").forEach(th=>{
     render(currentData);
   });
 });
+
 
 load();
 </script>
