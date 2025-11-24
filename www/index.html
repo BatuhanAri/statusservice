@@ -235,7 +235,7 @@
     /* Docker kartlarının boyutunu daha serbest bırak:
        tek sütun, full-width */
     .docker-cards{
-      grid-template-columns: 1fr;
+       grid-template-columns: repeat(3,minmax(260px,1fr));
     }
 
     @media (max-width:1024px){
