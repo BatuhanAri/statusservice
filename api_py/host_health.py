@@ -25,7 +25,7 @@ router = APIRouter(
 SERVICES = [
     {
         "id": "bind9",
-        "unit": "bind9.service",
+        "unit": "named.service",
         "name": "BIND9 DNS",
     },
     {
