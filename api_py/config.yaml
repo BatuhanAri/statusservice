@@ -1,4 +1,4 @@
-7bind: "0.0.0.0:8001"
+bind: "0.0.0.0:8001"
 timeout_ms: 2000
 cache_secs: 5
 
@@ -7,7 +7,9 @@ targets:
     host: 127.0.0.1
     port: 53
     present:
-      type: tcp           
+      type: tcp
+    version_path: "named -v"
+                 
 
   - name: nginx
     host: 127.0.0.1
@@ -15,13 +17,17 @@ targets:
     http_path: "/"
     expect_status: [200,301,302,401,403]
     present:
-      type: http             
+      type: http      
+    version_path: "nginx -v 2>&1"
+       
 
   - name: kea
     host: 127.0.0.1
     port: 8000
     present:
       type: tcp
+    version_path: "kea-dhcp4 -V"
+
 
   - name: jenkins
     host: 127.0.0.1
