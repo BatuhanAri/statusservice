@@ -46,24 +46,35 @@ SERVICES = [
 ]
 
 
+d# api_py/host_health.py içerisinde
+
 def check_systemd(unit: str) -> str:
     """
     systemctl is-active <unit>
-
-    - active  -> "up"
-    - diğer   -> "down"
-    - hata    -> "unknown"
     """
+    
+    CMD = "/usr/bin/systemctl"  
+    
     try:
         res = subprocess.run(
-            ["systemctl", "is-active", unit],
+            [CMD, "is-active", unit],
             capture_output=True,
             text=True,
             check=False,
         )
-        active = (res.returncode == 0) and (res.stdout.strip() == "active")
-        return "up" if active else "down"
-    except Exception:
+        
+        output = res.stdout.strip()
+        
+        if res.returncode == 0 and output == "active":
+            return "up"
+        else:
+            return "down"
+            
+    except FileNotFoundError:
+        print(f"HATA: '{CMD}' komutu bulunamadı. Lütfen 'which systemctl' ile yolu kontrol edin.")
+        return "unknown"
+    except Exception as e:
+        print(f"HATA: {unit} kontrol edilirken beklenmedik hata: {str(e)}")
         return "unknown"
 
 
