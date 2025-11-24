@@ -3,30 +3,29 @@ timeout_ms: 2000
 cache_secs: 5
 
 targets:
-  - name: bind9
-    host: 127.0.0.1
-    port: 53
-    present:
-      type: tcp
-    version_cmd: "named -v"
-                 
-
   - name: nginx
     host: 127.0.0.1
     port: 80
     http_path: "/"
-    expect_status: [200,301,302,401,403]
+    expect_status: [200,301,302]
     present:
-      type: http      
-    version_cmd: "nginx -v 2>&1"
-       
+      type: systemd
+    pkg: nginx
+
+  - name: bind9
+    host: 127.0.0.1
+    port: 53
+    present:
+      type: systemd
+    pkg: bind9
 
   - name: kea
     host: 127.0.0.1
     port: 8000
     present:
-      type: tcp
-    version_cmd: "kea-dhcp4 -V"
+      type: systemd
+    pkg: kea-dhcp4-server
+
 
 
   - name: jenkins

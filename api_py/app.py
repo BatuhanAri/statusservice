@@ -109,6 +109,24 @@ async def http_check(host: str, port: int, path: str, timeout_ms: int,
     except Exception as e:
         return {"http_ok": False, "error": str(e)}
 
+def get_pkg_version(pkg: str) -> Optional[str]:
+    try:
+        out = subprocess.check_output(
+            f"dpkg -l {pkg}",
+            shell=True, stderr=subprocess.STDOUT
+        ).decode(errors="ignore").strip()
+
+        for line in out.splitlines():
+            if line.startswith("ii"):
+                parts = line.split()
+                if len(parts) >= 3:
+                    return parts[2]  # version
+    except Exception:
+        return None
+
+    return None
+
+
 
 # -----------------------------
 # SYSTEMCTL VERSION (otomatik)
@@ -246,10 +264,12 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     res["version"] = version
 
     # Metadata
-    res["host"] = str(t.get("host"))
-    res["port"] = t.get("port")
-    if t.get("http_path"):
-        res["http_path"] = t["http_path"]
+    pkg = t.get("pkg")
+    if pkg:
+        res["version"] = get_pkg_version(pkg)
+    else:
+        res["version"] = None
+
 
     # -----------------------------
     # PRESENT HESAPLAMA
