@@ -1,4 +1,3 @@
-# api_py/app.py
 import asyncio, httpx, yaml, time, os, subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -28,20 +27,23 @@ cfg = load_cfg()
 # FastAPI uygulaması
 # -----------------------------
 app = FastAPI(title="IFE Health")
+
 # -----------------------------
 # System Services router
+# -----------------------------
 from .host_health import router as host_health_router
 app.include_router(host_health_router)
 
 # -----------------------------
 # Docker Services router
+# -----------------------------
 from .docker_services import router as docker_services_router
 app.include_router(docker_services_router)
 
-# Statik dosyaları /static altında ver (güvenli tercih)
+# Statik dosyalar
 app.mount("/static", StaticFiles(directory=str(WWW)), name="static")
 
-# Köke index.html döndür
+# Index
 @app.get("/")
 def index():
     idx = WWW / "index.html"
@@ -49,83 +51,114 @@ def index():
         return FileResponse(str(idx))
     return JSONResponse({"hint": "put www/index.html"})
 
-# IP-Service sayfasını kökten da ver (kolay erişim)
+
+# IP-Service sayfası
 @app.get("/ip-service.html")
 def ip_service_page():
     f = WWW / "ip-service.html"
     if f.exists():
         return FileResponse(str(f))
-    # fallback: static path önerisi
-    raise HTTPException(status_code=404, detail="ip-service.html bulunamadı (www/ip-service.html oluşturun)")
+    raise HTTPException(status_code=404, detail="ip-service.html bulunamadı")
+
 
 # -----------------------------
-# Leases router (Kea CSV -> JSON)
+# Leases router
 # -----------------------------
 from .leases import router as leases_router
-app.include_router(leases_router)   
+app.include_router(leases_router)
+
 
 # -----------------------------
-# Health / Problama (mevcut hedef kontrolleri)
+# Cache
 # -----------------------------
 _cached: Optional[Dict[str, Any]] = None
 _cached_at: float = 0.0
-def now() -> float: return time.monotonic()
 
+def now() -> float:
+    return time.monotonic()
+
+
+# -----------------------------
+# Yardımcı kontroller
+# -----------------------------
 async def tcp_check(host: str, port: int, timeout_ms: int) -> Optional[str]:
     try:
-        r, w = await asyncio.wait_for(asyncio.open_connection(host, port), timeout_ms/1000)
+        r, w = await asyncio.wait_for(
+            asyncio.open_connection(host, port),
+            timeout_ms/1000
+        )
         w.close()
-        try:
-            await w.wait_closed()
-        except Exception:
-            pass
+        try: await w.wait_closed()
+        except: pass
         return None
     except Exception as e:
         return str(e)
 
-async def http_check(host: str, port: int, path: str, timeout_ms: int, tls: bool, expect: Optional[List[int]]):
+
+async def http_check(host: str, port: int, path: str, timeout_ms: int,
+                     tls: bool, expect: Optional[List[int]]):
     url = f"{'https' if tls else 'http'}://{host}:{port}{path if path.startswith('/') else '/'+path}"
     try:
         async with httpx.AsyncClient(timeout=timeout_ms/1000) as cli:
             r = await cli.get(url)
+
         st = r.status_code
-        ok = st in (expect or [200, 301, 302, 401, 403])
+        ok = st in (expect or [200,301,302,401,403])
         return {"http_ok": ok, "status": st}
+
     except Exception as e:
         return {"http_ok": False, "error": str(e)}
 
-def fetch_version_cmd(t: Dict[str, Any]) -> Optional[str]:
+
+# -----------------------------
+# SYSTEMCTL VERSION (otomatik)
+# -----------------------------
+def fetch_version_systemctl(unit_name: str) -> Optional[str]:
     """
-    target config içinde version_cmd varsa, o komutu çalıştırır,
-    çıktıdan ilk satırı alıp döner.
+    systemctl -> FragmentPath -> dpkg -S -> dpkg -l zinciri ile otomatik versiyon çıkarır.
     """
-    cmd = t.get("version_cmd")
-    if not cmd:
+    try:
+        # Unit path
+        out = subprocess.check_output(
+            f"systemctl show {unit_name} --property=FragmentPath",
+            shell=True, stderr=subprocess.STDOUT
+        ).decode(errors="ignore").strip()
+
+        if "=" not in out:
+            return None
+
+        frag_path = out.split("=", 1)[1].strip()
+
+        # Bu hizmet hangi paketten geliyor?
+        out = subprocess.check_output(
+            f"dpkg -S {frag_path}",
+            shell=True, stderr=subprocess.STDOUT
+        ).decode(errors="ignore").strip()
+
+        pkg = out.split(":", 1)[0].strip()
+
+        # Paket versiyonu al
+        out = subprocess.check_output(
+            f"dpkg -l {pkg}",
+            shell=True, stderr=subprocess.STDOUT
+        ).decode(errors="ignore")
+
+        for line in out.splitlines():
+            if line.startswith("ii "):
+                parts = line.split()
+                if len(parts) >= 3:
+                    return parts[2]
+
         return None
 
-    try:
-        out = subprocess.check_output(
-            cmd,
-            shell=True,
-            stderr=subprocess.STDOUT,
-            timeout=2
-        )
-        text = out.decode(errors="ignore").strip()
-        if not text:
-            return None
-        line = text.splitlines()[0]
-        return line[:64]
     except Exception:
         return None
 
 
-
+# -----------------------------
+# HTTP version çekme (opsiyonel)
+# -----------------------------
 async def fetch_version_http(t: Dict[str, Any], timeout_ms: int) -> Optional[str]:
-    """
-    target config içinde version_path varsa, host+port+path'e HTTP GET atar,
-    JSON ise version/app_version/build gibi alanları, değilse raw text'ten
-    küçük bir parça döner.
-    """
     vpath = t.get("version_path")
     if not vpath:
         return None
@@ -137,32 +170,33 @@ async def fetch_version_http(t: Dict[str, Any], timeout_ms: int) -> Optional[str
     if not vpath.startswith("/"):
         vpath = "/" + vpath
 
-    base = f"{'https' if tls else 'http'}://{host}:{port}"
-    url  = base + vpath
+    url = f"{'https' if tls else 'http'}://{host}:{port}{vpath}"
 
     try:
         async with httpx.AsyncClient(timeout=timeout_ms/1000) as cli:
             r = await cli.get(url)
-    except Exception:
+    except:
         return None
 
-    if r.status_code < 200 or r.status_code >= 300:
+    if not (200 <= r.status_code < 300):
         return None
 
+    # JSON version destekliyse
     try:
         data = r.json()
         for key in ("version", "app_version", "build", "tag", "commit"):
             if key in data:
                 return str(data[key])
-    except Exception:
+    except:
         txt = (r.text or "").strip()
-        if txt:
-            return txt[:64]
+        return txt[:64] if txt else None
 
     return None
 
 
-
+# -----------------------------
+# TEK SERVİS CHECK
+# -----------------------------
 async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     res: Dict[str, Any] = {"present": True}
 
@@ -172,107 +206,106 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     if err:
         res.setdefault("errors", {})["port"] = err
 
-    # HTTP (opsiyonel)
+    # HTTP kontrolü
     has_http = bool(t.get("http_path") or t.get("expect_status") or t.get("tls"))
     if has_http:
         h = await http_check(
-            str(t["host"]), int(t["port"]), str(t.get("http_path") or "/"),
+            str(t["host"]), int(t["port"]),
+            str(t.get("http_path") or "/"),
             timeout_ms, bool(t.get("tls")), t.get("expect_status")
         )
         res.update(h)
         if "error" in h:
             res.setdefault("errors", {})["http"] = h["error"]
 
-    # 🔹 VERSION (HTTP varsa version_path, yoksa version_cmd)
-    version: Optional[str] = None
-    if t.get("version_path"):
-        # eğer daha önce HTTP version_path için async helper yazdıysan burada kullan
-        version = await fetch_version_http(t, timeout_ms)  # varsa
-    elif t.get("version_cmd"):
-        version = fetch_version_cmd(t)
-
-    res["version"] = version  # HER serviste key var
-
-    # Rozetler için metadata
-    res["host"] = str(t.get("host"))
-    res["port"] = int(t.get("port")) if t.get("port") is not None else None
-    if t.get("http_path") is not None:
-        res["http_path"] = str(t.get("http_path"))
-
-    # ---- PRESENT HESAPLAMA (senin kodun) ----
+    # -----------------------------
+    # VERSION (systemd > http > cmd)
+    # -----------------------------
+    version = None
     pres = t.get("present", {}) or {}
-    ptype = pres.get("type", "auto")
+    ptype = pres.get("type")
 
-    def present_auto() -> bool:
-        if has_http:
-            return bool(res.get("http_ok") is True)
-        return bool(res.get("port_ok") is True)
+    # 1) systemd
+    if ptype == "systemd":
+        unit = pres.get("unit") or f"{t['name']}.service"
+        version = fetch_version_systemctl(unit)
 
-    def present_tcp() -> bool:
-        return bool(res.get("port_ok") is True)
+    # 2) HTTP version_path
+    elif t.get("version_path"):
+        version = await fetch_version_http(t, timeout_ms)
 
-    def present_http() -> bool:
-        if not has_http:
-            return present_auto()
-        return bool(res.get("http_ok") is True)
-
-    def present_cmd() -> bool:
-        cmd = pres.get("cmd")
-        if not cmd:
-            return present_auto()
+    # 3) Komut tabanlı
+    elif t.get("version_cmd"):
+        cmd = t["version_cmd"]
         try:
-            rc = subprocess.call(cmd, shell=True)
-            return rc == 0
-        except Exception:
-            return False
+            out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode(errors="ignore")
+            version = out.splitlines()[0][:64]
+        except:
+            version = None
 
-    def present_systemd() -> bool:
-        unit = pres.get("unit")
-        if not unit:
-            return present_auto()
+    res["version"] = version
+
+    # Metadata
+    res["host"] = str(t.get("host"))
+    res["port"] = t.get("port")
+    if t.get("http_path"):
+        res["http_path"] = t["http_path"]
+
+    # -----------------------------
+    # PRESENT HESAPLAMA
+    # -----------------------------
+    def present_auto():
+        if has_http:
+            return bool(res.get("http_ok"))
+        return bool(res.get("port_ok"))
+
+    def present_tcp():
+        return bool(res.get("port_ok"))
+
+    def present_http():
+        return bool(res.get("http_ok")) if has_http else present_auto()
+
+    def present_systemd():
+        unit = pres.get("unit") or f"{t['name']}.service"
         try:
             rc = subprocess.call(f"systemctl is-active --quiet {unit}", shell=True)
             return rc == 0
-        except Exception:
+        except:
             return False
 
-    def present_file() -> bool:
-        path = pres.get("path")
-        if not path:
-            return present_auto()
-        return os.path.exists(path)
+    def present_file():
+        return os.path.exists(pres.get("path", ""))
 
-    if ptype == "tcp":
-        res["present"] = present_tcp()
-    elif ptype == "http":
-        res["present"] = present_http()
-    elif ptype == "cmd":
-        res["present"] = present_cmd()
-    elif ptype == "systemd":
-        res["present"] = present_systemd()
-    elif ptype == "file":
-        res["present"] = present_file()
-    else:
-        res["present"] = present_auto()
+    if ptype == "tcp": res["present"] = present_tcp()
+    elif ptype == "http": res["present"] = present_http()
+    elif ptype == "systemd": res["present"] = present_systemd()
+    elif ptype == "file": res["present"] = present_file()
+    else: res["present"] = present_auto()
 
     return res
 
 
-
+# -----------------------------
+# TÜM SERVİSLER CHECK
+# -----------------------------
 async def perform() -> Dict[str, Any]:
-    ts: List[Dict[str, Any]] = cfg["targets"]
+    ts = cfg["targets"]
     rs = await asyncio.gather(*[check_one(t, int(cfg["timeout_ms"])) for t in ts])
-    return { str(t["name"]): r for t, r in zip(ts, rs) }
+    return {t["name"]: r for t, r in zip(ts, rs)}
+
 
 def cached() -> Dict[str, Any]:
     global _cached, _cached_at
     if _cached and (now() - _cached_at) < int(cfg["cache_secs"]):
         return _cached
-    # senkron endpoint'ten çağrıldığında güvenli
     data = asyncio.run(perform())
     _cached, _cached_at = data, now()
     return data
 
+
+# -----------------------------
+# API ROUTES
+# -----------------------------
 @app.get("/health")
 def liveness():
     return {"status": "up"}
