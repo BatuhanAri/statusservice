@@ -10,23 +10,21 @@ targets:
     expect_status: [200,301,302]
     present:
       type: systemd
-    pkg: nginx
+    version: "1.18.0-6ubuntu14.7" 
 
   - name: bind9
     host: 127.0.0.1
     port: 53
     present:
       type: systemd
-    pkg: bind9
+    version: "1:9.18.39-0ubuntu0.22.04.2"
 
   - name: kea
     host: 127.0.0.1
     port: 8000
     present:
       type: systemd
-    pkg: kea-dhcp4-server
-
-
+    version: "2.2.0-1ubuntu0.2" 
 
   - name: jenkins
     host: 127.0.0.1
