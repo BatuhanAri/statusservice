@@ -109,22 +109,28 @@ async def http_check(host: str, port: int, path: str, timeout_ms: int,
     except Exception as e:
         return {"http_ok": False, "error": str(e)}
 
-def get_pkg_version(pkg: str) -> Optional[str]:
+def get_pkg_version(pkg_name: str) -> Optional[str]:
+    """
+    dpkg-query kullanarak doğrudan paket versiyonunu temiz bir şekilde döner.
+    """
+    if not pkg_name:
+        return None
+    
     try:
+        # -W: show, -f: format. Sadece versiyonu yazdırır.
+        cmd = f"dpkg-query -W -f='${{Version}}' {pkg_name}"
         out = subprocess.check_output(
-            f"dpkg -l {pkg}",
-            shell=True, stderr=subprocess.STDOUT
-        ).decode(errors="ignore").strip()
-
-        for line in out.splitlines():
-            if line.startswith("ii"):
-                parts = line.split()
-                if len(parts) >= 3:
-                    return parts[2]  # version
+            cmd, 
+            shell=True, 
+            stderr=subprocess.DEVNULL
+        ).decode("utf-8").strip()
+        
+        return out if out else None
+    except subprocess.CalledProcessError:
+        # Paket yüklü değilse veya hata varsa
+        return None
     except Exception:
         return None
-
-    return None
 
 
 
@@ -217,14 +223,14 @@ async def fetch_version_http(t: Dict[str, Any], timeout_ms: int) -> Optional[str
 # -----------------------------
 async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     res: Dict[str, Any] = {"present": True}
-
-    # TCP
+    
+    # --- 1. Port Kontrolü (TCP) ---
     err = await tcp_check(str(t["host"]), int(t["port"]), timeout_ms)
     res["port_ok"] = (err is None)
     if err:
         res.setdefault("errors", {})["port"] = err
 
-    # HTTP kontrolü
+    # --- 2. HTTP Kontrolü ---
     has_http = bool(t.get("http_path") or t.get("expect_status") or t.get("tls"))
     if has_http:
         h = await http_check(
@@ -236,59 +242,56 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
         if "error" in h:
             res.setdefault("errors", {})["http"] = h["error"]
 
-    # -----------------------------
-    # VERSION (systemd > http > cmd)
-    # -----------------------------
+    # --- 3. VERSION ALMA STRATEJİSİ ---
     version = None
-    pres = t.get("present", {}) or {}
-    ptype = pres.get("type")
+    
+    # Öncelik 1: Config'de 'pkg' tanımlıysa (En Sağlam Yöntem)
+    pkg_name = t.get("pkg")
+    if pkg_name:
+        version = get_pkg_version(pkg_name)
 
-    # 1) systemd
-    if ptype == "systemd":
-        unit = pres.get("unit") or f"{t['name']}.service"
-        version = fetch_version_systemctl(unit)
-
-    # 2) HTTP version_path
-    elif t.get("version_path"):
+    # Öncelik 2: Eğer pkg yoksa ve HTTP endpoint varsa (Örn: Jenkins, Prometheus)
+    if not version and t.get("version_path"):
         version = await fetch_version_http(t, timeout_ms)
 
-    # 3) Komut tabanlı
-    elif t.get("version_cmd"):
-        cmd = t["version_cmd"]
+    # Öncelik 3: Özel bir komut girilmişse
+    if not version and t.get("version_cmd"):
         try:
+            cmd = t["version_cmd"]
             out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode(errors="ignore")
             version = out.splitlines()[0][:64]
         except:
-            version = None
+            pass
+            
+    # Öncelik 4: Hiçbiri yoksa ve systemd tanımlıysa (Son çare eski yöntem)
+    if not version:
+        pres = t.get("present", {}) or {}
+        if pres.get("type") == "systemd":
+            # Burada eski karmaşık systemctl fonksiyonunu çağırabiliriz 
+            # ama genellikle pkg tanımlı olduğu için buraya düşmeyecektir.
+            unit = pres.get("unit") or f"{t['name']}.service"
+            version = fetch_version_systemctl(unit)
 
     res["version"] = version
 
-    # Metadata
-    pkg = t.get("pkg")
-    if pkg:
-        res["version"] = get_pkg_version(pkg)
-    else:
-        res["version"] = None
+    # --- 4. PRESENT (Varlık) Kontrolü ---
+    pres = t.get("present", {}) or {}
+    ptype = pres.get("type")
 
-
-    # -----------------------------
-    # PRESENT HESAPLAMA
-    # -----------------------------
     def present_auto():
-        if has_http:
-            return bool(res.get("http_ok"))
+        if has_http: return bool(res.get("http_ok"))
         return bool(res.get("port_ok"))
-
-    def present_tcp():
-        return bool(res.get("port_ok"))
-
-    def present_http():
-        return bool(res.get("http_ok")) if has_http else present_auto()
 
     def present_systemd():
         unit = pres.get("unit") or f"{t['name']}.service"
         try:
-            rc = subprocess.call(f"systemctl is-active --quiet {unit}", shell=True)
+            # is-active 0 dönerse çalışıyordur
+            rc = subprocess.call(
+                f"systemctl is-active --quiet {unit}", 
+                shell=True, 
+                stdout=subprocess.DEVNULL, 
+                stderr=subprocess.DEVNULL
+            )
             return rc == 0
         except:
             return False
@@ -296,8 +299,8 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     def present_file():
         return os.path.exists(pres.get("path", ""))
 
-    if ptype == "tcp": res["present"] = present_tcp()
-    elif ptype == "http": res["present"] = present_http()
+    if ptype == "tcp": res["present"] = bool(res.get("port_ok"))
+    elif ptype == "http": res["present"] = bool(res.get("http_ok")) if has_http else present_auto()
     elif ptype == "systemd": res["present"] = present_systemd()
     elif ptype == "file": res["present"] = present_file()
     else: res["present"] = present_auto()
