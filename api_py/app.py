@@ -5,9 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
-# -----------------------------
 # Yol/konfig
-# -----------------------------
 BASE = Path(__file__).parent
 ROOT = BASE.parent
 CFG  = BASE / "config.yaml"
@@ -23,20 +21,14 @@ def load_cfg() -> Dict[str, Any]:
 
 cfg = load_cfg()
 
-# -----------------------------
 # FastAPI uygulaması
-# -----------------------------
 app = FastAPI(title="IFE Health")
 
-# -----------------------------
 # System Services router
-# -----------------------------
 from .host_health import router as host_health_router
 app.include_router(host_health_router)
 
-# -----------------------------
 # Docker Services router
-# -----------------------------
 from .docker_services import router as docker_services_router
 app.include_router(docker_services_router)
 
@@ -61,16 +53,12 @@ def ip_service_page():
     raise HTTPException(status_code=404, detail="ip-service.html bulunamadı")
 
 
-# -----------------------------
 # Leases router
-# -----------------------------
 from .leases import router as leases_router
 app.include_router(leases_router)
 
 
-# -----------------------------
 # Cache
-# -----------------------------
 _cached: Optional[Dict[str, Any]] = None
 _cached_at: float = 0.0
 
@@ -78,9 +66,7 @@ def now() -> float:
     return time.monotonic()
 
 
-# -----------------------------
 # Yardımcı kontroller
-# -----------------------------
 async def tcp_check(host: str, port: int, timeout_ms: int) -> Optional[str]:
     try:
         r, w = await asyncio.wait_for(
@@ -127,10 +113,6 @@ def get_pkg_version(pkg: str) -> Optional[str]:
     return None
 
 
-
-# -----------------------------
-# SYSTEMCTL VERSION (otomatik)
-# -----------------------------
 def fetch_version_systemctl(unit_name: str) -> Optional[str]:
     """
     systemctl -> FragmentPath -> dpkg -S -> dpkg -l zinciri ile otomatik versiyon çıkarır.
@@ -173,9 +155,8 @@ def fetch_version_systemctl(unit_name: str) -> Optional[str]:
         return None
 
 
-# -----------------------------
-# HTTP version çekme (opsiyonel)
-# -----------------------------
+# HTTP version çekme 
+
 async def fetch_version_http(t: Dict[str, Any], timeout_ms: int) -> Optional[str]:
     vpath = t.get("version_path")
     if not vpath:
@@ -212,19 +193,17 @@ async def fetch_version_http(t: Dict[str, Any], timeout_ms: int) -> Optional[str
     return None
 
 
-# -----------------------------
 # TEK SERVİS CHECK
-# -----------------------------
 async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     res: Dict[str, Any] = {"present": True}
 
-    # TCP
+    # TCP KONTROLÜ
     err = await tcp_check(str(t["host"]), int(t["port"]), timeout_ms)
     res["port_ok"] = (err is None)
     if err:
         res.setdefault("errors", {})["port"] = err
 
-    # HTTP kontrolü
+    # HTTP KONTROLÜ 
     has_http = bool(t.get("http_path") or t.get("expect_status") or t.get("tls"))
     if has_http:
         h = await http_check(
@@ -236,44 +215,18 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
         if "error" in h:
             res.setdefault("errors", {})["http"] = h["error"]
 
-    # -----------------------------
-    # VERSION (systemd > http > cmd)
-    # -----------------------------
+    #  VERSION (DİNAMİK - pkg + dpkg)
     version = None
+    pkg = t.get("pkg")
+    if pkg:
+        version = get_pkg_version(pkg)  # host dpkg DB'den çekiyor (bind mount sayesinde)
+
+    res["version"] = version  # UI her serviste bu key'i görecek
+
+    # PRESENT HESAPLAMA
     pres = t.get("present", {}) or {}
     ptype = pres.get("type")
 
-    # 1) systemd
-    if ptype == "systemd":
-        unit = pres.get("unit") or f"{t['name']}.service"
-        version = fetch_version_systemctl(unit)
-
-    # 2) HTTP version_path
-    elif t.get("version_path"):
-        version = await fetch_version_http(t, timeout_ms)
-
-    # 3) Komut tabanlı
-    elif t.get("version_cmd"):
-        cmd = t["version_cmd"]
-        try:
-            out = subprocess.check_output(cmd, shell=True, stderr=subprocess.STDOUT).decode(errors="ignore")
-            version = out.splitlines()[0][:64]
-        except:
-            version = None
-
-    res["version"] = version
-
-    # Metadata
-    pkg = t.get("pkg")
-    if pkg:
-        res["version"] = get_pkg_version(pkg)
-    else:
-        res["version"] = None
-
-
-    # -----------------------------
-    # PRESENT HESAPLAMA
-    # -----------------------------
     def present_auto():
         if has_http:
             return bool(res.get("http_ok"))
@@ -285,29 +238,29 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     def present_http():
         return bool(res.get("http_ok")) if has_http else present_auto()
 
+    # systemd için systemctl'e girmiyoruz; port/http durumuna bakmak yeterli
     def present_systemd():
-        unit = pres.get("unit") or f"{t['name']}.service"
-        try:
-            rc = subprocess.call(f"systemctl is-active --quiet {unit}", shell=True)
-            return rc == 0
-        except:
-            return False
+        return present_auto()
 
     def present_file():
         return os.path.exists(pres.get("path", ""))
 
-    if ptype == "tcp": res["present"] = present_tcp()
-    elif ptype == "http": res["present"] = present_http()
-    elif ptype == "systemd": res["present"] = present_systemd()
-    elif ptype == "file": res["present"] = present_file()
-    else: res["present"] = present_auto()
+    if ptype == "tcp":
+        res["present"] = present_tcp()
+    elif ptype == "http":
+        res["present"] = present_http()
+    elif ptype == "systemd":
+        res["present"] = present_systemd()
+    elif ptype == "file":
+        res["present"] = present_file()
+    else:
+        res["present"] = present_auto()
 
     return res
 
 
-# -----------------------------
+
 # TÜM SERVİSLER CHECK
-# -----------------------------
 async def perform() -> Dict[str, Any]:
     ts = cfg["targets"]
     rs = await asyncio.gather(*[check_one(t, int(cfg["timeout_ms"])) for t in ts])
@@ -323,9 +276,7 @@ def cached() -> Dict[str, Any]:
     return data
 
 
-# -----------------------------
 # API ROUTES
-# -----------------------------
 @app.get("/health")
 def liveness():
     return {"status": "up"}
