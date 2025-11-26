@@ -307,27 +307,7 @@ body{
     }
     .badge code{ font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.75rem }
     .proto{ opacity:.8 }
-        /* --- Version görünümü --- */
-    .title-left{
-      display:flex;
-      align-items:center;
-      gap:6px;
-      min-width:0;
-    }
-    .svc-version-chip{
-      display:inline-flex;
-      align-items:center;
-      padding:2px 6px;
-      border-radius:999px;
-      border:1px solid var(--bd);
-      font-size:.75rem;
-      color:var(--muted);
-      background:rgba(15,23,42,.9);
-      max-width:130px;
-      white-space:nowrap;
-      overflow:hidden;
-      text-overflow:ellipsis;
-    }
+
 
 
     /* -----------------------------
@@ -513,65 +493,68 @@ body{
   }
 
   // ---------- Kart üretimi ----------
-  function makeCard(svc) {
-    const stateCls = svc.ok ? 'ok' : 'bad';
-    const section = el('section', {
-      className: `card ${stateCls}`,
-      tabindex: 0,
-    });
+function makeCard(svc) {
+  const stateCls = svc.ok ? 'ok' : 'bad';
+  const section = el('section', {
+    className: `card ${stateCls}`,
+    tabindex: 0,
+  });
 
-    // Başlık: isim + version chip
-    const nameSpan = el('span', { textContent: svc.name });
+  // Başlık: sadece servis adı
+  const title = el('h2', {}, [
+    el('span', { textContent: svc.name }),
+    rh(stateCls),
+  ]);
 
-    const versionSpan = el('span', { className: 'svc-version-chip' });
-    if (svc.version) {
-      versionSpan.textContent = 'v ' + String(svc.version);
-    } else {
-      versionSpan.style.display = 'none';
-    }
+  // Badgeler
+  const badges = [];
 
-    const titleLeft = el('span', { className: 'title-left' }, [
-      nameSpan,
-      versionSpan,
-    ]);
+  badges.push(
+    el('span', { className: 'badge' }, [
+      el('span', { className: 'proto', textContent: 'TYPE' }),
+      el('span', { textContent: ':' }),
+      el('code', { textContent: svc.type }),
+    ]),
+  );
 
-    const title = el('h2', {}, [
-      titleLeft,
-      rh(stateCls),
-    ]);
-
-    const badges = [];
+  if (svc.extraValue) {
     badges.push(
       el('span', { className: 'badge' }, [
-        el('span', { className: 'proto', textContent: 'TYPE' }),
+        el('span', { className: 'proto', textContent: svc.extraLabel }),
         el('span', { textContent: ':' }),
-        el('code', { textContent: svc.type }),
+        el('code', { textContent: svc.extraValue }),
       ]),
     );
-    if (svc.extraValue) {
-      badges.push(
-        el('span', { className: 'badge' }, [
-          el('span', { className: 'proto', textContent: svc.extraLabel }),
-          el('span', { textContent: ':' }),
-          el('code', { textContent: svc.extraValue }),
-        ]),
-      );
-    }
-    const badgesWrap = el('div', { className: 'badges' }, badges);
-
-    const rows = [];
-    rows.push(
-      el('div', { className: 'row' }, [
-        el('span', { className: 'label', textContent: 'Durum' }),
-        el('span', { className: 'val' }, chip(svc.ok ? 'ok' : 'bad', svc.statusText)),
-      ]),
-    );
-
-    const meta = el('div', { className: 'meta' }, rows);
-
-    section.append(title, badgesWrap, meta);
-    return section;
   }
+
+  // >>> BURASI YENİ: Versiyon badge olarak
+  if (svc.version) {
+    badges.push(
+      el('span', { className: 'badge' }, [
+        el('span', { className: 'proto', textContent: 'VERSION' }),
+        el('span', { textContent: ':' }),
+        el('code', { textContent: String(svc.version) }),
+      ]),
+    );
+  }
+  // <<<
+
+  const badgesWrap = el('div', { className: 'badges' }, badges);
+
+  const rows = [];
+  rows.push(
+    el('div', { className: 'row' }, [
+      el('span', { className: 'label', textContent: 'Durum' }),
+      el('span', { className: 'val' }, chip(svc.ok ? 'ok' : 'bad', svc.statusText)),
+    ]),
+  );
+
+  const meta = el('div', { className: 'meta' }, rows);
+
+  section.append(title, badgesWrap, meta);
+  return section;
+}
+
 
   // ---------- DOM referansları ----------
   const gridEl = document.getElementById('grid');
