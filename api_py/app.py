@@ -66,6 +66,29 @@ def now() -> float:
     return time.monotonic()
 
 
+def get_kernel_version() -> str:
+    """
+    Host kernel versiyonunu uname -r ile al.
+    """
+    try:
+        out = subprocess.check_output(
+            ["uname", "-r"], stderr=subprocess.STDOUT
+        )
+        return out.decode(errors="ignore").strip()
+    except Exception as e:
+        return f"unknown ({e.__class__.__name__})"
+
+
+@app.get("/api/system-info")
+def api_system_info():
+    """
+    Arayüz için sistem bilgileri.
+    """
+    return {
+        "kernel": get_kernel_version()
+    }
+
+
 # Yardımcı kontroller
 async def tcp_check(host: str, port: int, timeout_ms: int) -> Optional[str]:
     try:

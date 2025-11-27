@@ -152,6 +152,19 @@ body{
     }
     .score span{position:relative; z-index:1; color:var(--fg)}
 
+    .stats {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pill-kernel {
+  margin-left: auto;          
+  font-size: 12px;
+  opacity: 0.85;
+}
+
+
     /* -----------------------------
        Search bar
     ------------------------------*/
@@ -369,12 +382,28 @@ main#grid{
     </div>
   </header>
 
-  <div class="stats" role="status" aria-live="polite">
-    <div class="score" id="score" title="Health Score"><span id="scoreVal">–%</span></div>
-    <div class="pill"><span class="dot wardot"></span>Toplam: <strong id="statTotal">0</strong></div>
-    <div class="pill"><span class="dot okdot"></span>OK: <strong id="statOk">0</strong></div>
-    <div class="pill"><span class="dot baddot"></span>Hata: <strong id="statBad">0</strong></div>
+<div class="stats" role="status" aria-live="polite">
+  <div class="score" id="score" title="Health Score">
+    <span id="scoreVal">–%</span>
   </div>
+
+  <div class="pill">
+    <span class="dot wardot"></span>Toplam: <strong id="statTotal">0</strong>
+  </div>
+
+  <div class="pill">
+    <span class="dot okdot"></span>OK: <strong id="statOk">0</strong>
+  </div>
+
+  <div class="pill">
+    <span class="dot baddot"></span>Hata: <strong id="statBad">0</strong>
+  </div>
+
+  <div class="pill pill-kernel" title="Linux kernel sürümü">
+    Kernel Version: <strong id="kernelText">...</strong>
+  </div>
+</div>
+
 
   <div class="toolbar">
     <div class="toolbar-inner">
@@ -697,8 +726,31 @@ function makeCard(svc) {
     });
   }
 
+   async function loadKernelVersion() {
+    try {
+      const res = await fetch('/api/system-info');
+      if (!res.ok) return;
+
+      const data = await res.json();
+      if (!data || !data.kernel) return;
+
+      const el = document.getElementById('kernelText');
+      if (el) {
+        el.textContent = data.kernel;
+      }
+    } catch (e) {
+      console.error('kernel versiyon alınamadı', e);
+    }
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadKernelVersion();
+  });
+
   // İlk yükleme
   await loadOnce();
+
+
   
 
 </script>
