@@ -225,13 +225,12 @@ body{
     /* -----------------------------
        Ana içerik + Gruplar
     ------------------------------*/
-main#grid{
-  padding:10px 14px 0;
-  max-width:1200px;
-  margin:8px auto 32px;  
-  flex:1 0 auto;         
-}
-
+    main#grid{
+      padding:10px 14px 0;
+      max-width:1420px; 
+      margin:8px auto 32px;  
+      flex:1 0 auto;         
+    }
 
     .group{
       margin-bottom:18px;
@@ -259,12 +258,11 @@ main#grid{
     .group-cards{
       display:grid;
       gap:14px;
-      grid-template-columns:repeat(3,minmax(260px,1fr));
+      grid-template-columns:repeat(4,minmax(260px,1fr));
     }
 
-    /* Docker kartlarının boyutunu daha serbest bırak */
     .docker-cards{
-       grid-template-columns: repeat(3,minmax(260px,1fr));
+       grid-template-columns: repeat(4,minmax(260px,1fr));
     }
 
     @media (max-width:1024px){
@@ -449,7 +447,7 @@ main#grid{
     SYSTEMD_URL: '/api/system-services',
     DOCKER_URL: '/api/docker-services',
     HEALTH_URL: '/api/health',
-    STATIC_SYSTEMD_IDS: ['bind9', 'kea', 'nginx'],
+    STATIC_SYSTEMD_IDS: ['bind9', 'kea', 'nginx', 'system-service'],
   };
 
   // ---------- Mini yardımcılar ----------
