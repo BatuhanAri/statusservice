@@ -8,7 +8,7 @@ import subprocess
 
 
 # Yol/konfig
-OS_RELEASE = "/etc/os-release"
+OS_RELEASE = "/host-etc-os-release"
 BASE = Path(__file__).parent
 ROOT = BASE.parent
 CFG  = BASE / "config.yaml"
@@ -87,7 +87,6 @@ def get_distro_info() -> Dict[str, Optional[str]]:
       - PRETTY_NAME
       - VERSION_CODENAME
       - ID_LIKE
-    alanlarını okur.
     """
     pretty_name = None
     version_codename = None
@@ -101,7 +100,7 @@ def get_distro_info() -> Dict[str, Optional[str]]:
                     continue
 
                 key, val = line.split("=", 1)
-                # Çevredeki tırnakları temizle
+
                 val = val.strip().strip('"').strip("'")
 
                 if key == "PRETTY_NAME":

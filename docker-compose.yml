@@ -19,5 +19,6 @@ services:
       - /run/systemd:/run/systemd  
       - /var/lib/dpkg:/var/lib/dpkg:ro      
       - /etc/dpkg:/etc/dpkg:ro
+      - /etc/os-release:/host-etc-os-release:ro
 
     command: uvicorn api_py.app:app --host 0.0.0.0 --port 8001
