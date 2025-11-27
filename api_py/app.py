@@ -4,8 +4,11 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+import subprocess
+
 
 # Yol/konfig
+OS_RELEASE = "/etc/os-release"
 BASE = Path(__file__).parent
 ROOT = BASE.parent
 CFG  = BASE / "config.yaml"
@@ -78,14 +81,53 @@ def get_kernel_version() -> str:
     except Exception as e:
         return f"unknown ({e.__class__.__name__})"
 
+def get_distro_info() -> Dict[str, Optional[str]]:
+    """
+    /etc/os-release içinden:
+      - PRETTY_NAME
+      - VERSION_CODENAME
+      - ID_LIKE
+    alanlarını okur.
+    """
+    pretty_name = None
+    version_codename = None
+    id_like = None
+
+    try:
+        with open(OS_RELEASE, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line or "=" not in line:
+                    continue
+
+                key, val = line.split("=", 1)
+                # Çevredeki tırnakları temizle
+                val = val.strip().strip('"').strip("'")
+
+                if key == "PRETTY_NAME":
+                    pretty_name = val
+                elif key == "VERSION_CODENAME":
+                    version_codename = val
+                elif key == "ID_LIKE":
+                    id_like = val
+    except Exception:
+        pass
+
+    return {
+        "pretty_name": pretty_name,
+        "version_codename": version_codename,
+        "id_like": id_like
+    }
+
 
 @app.get("/api/system-info")
 def api_system_info():
-    """
-    Arayüz için sistem bilgileri.
-    """
+    distro = get_distro_info()
     return {
-        "kernel": get_kernel_version()
+        "kernel": get_kernel_version(),
+        "pretty_name": distro.get("pretty_name"),
+        "version_codename": distro.get("version_codename"),
+        "id_like": distro.get("id_like"),
     }
 
 

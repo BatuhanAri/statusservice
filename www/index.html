@@ -132,10 +132,18 @@ body{
         rgba(15,23,42,.92),
         rgba(15,23,42,.96));
     }
-    .pill{
-      display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:999px;
-      background:rgba(15,23,42,.8); border:1px solid var(--bd); color:var(--muted);
-    }
+   .pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--bd);
+  background: rgba(15,23,42,0.9);
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
     .dot{width:10px;height:10px;border-radius:3px}
     .okdot{background:var(--ok)} .baddot{background:var(--bad)} .wardot{background:var(--warn)}
     .score{
@@ -162,6 +170,9 @@ body{
   margin-left: auto;          
   font-size: 12px;
   opacity: 0.85;
+}
+.pill-distro {
+  opacity: 0.9;
 }
 
 
@@ -388,21 +399,29 @@ main#grid{
   </div>
 
   <div class="pill">
-    <span class="dot wardot"></span>Toplam: <strong id="statTotal">0</strong>
+    <span class="dot wardot"></span>
+    Toplam: <strong id="statTotal">0</strong>
   </div>
 
   <div class="pill">
-    <span class="dot okdot"></span>OK: <strong id="statOk">0</strong>
+    <span class="dot okdot"></span>
+    OK: <strong id="statOk">0</strong>
   </div>
 
   <div class="pill">
-    <span class="dot baddot"></span>Hata: <strong id="statBad">0</strong>
+    <span class="dot baddot"></span>
+    Hata: <strong id="statBad">0</strong>
   </div>
 
   <div class="pill pill-kernel" title="Linux kernel sürümü">
-    Kernel Version: <strong id="kernelText">...</strong>
+    Kernel Versiyon: <strong id="kernelText">...</strong>
+  </div>
+
+  <div class="pill pill-distro" title="Linux dağıtımı">
+    <strong id="distroText">...</strong>
   </div>
 </div>
+
 
 
   <div class="toolbar">
@@ -726,32 +745,72 @@ function makeCard(svc) {
     });
   }
 
-   async function loadKernelVersion() {
-    try {
-      const res = await fetch('/api/system-info');
-      if (!res.ok) return;
 
-      const data = await res.json();
-      if (!data || !data.kernel) return;
+async function loadSystemInfo() {
+  try {
+    const res = await fetch('/api/system-info');
+    if (!res.ok) return;
 
-      const el = document.getElementById('kernelText');
-      if (el) {
-        el.textContent = data.kernel;
-      }
-    } catch (e) {
-      console.error('kernel versiyon alınamadı', e);
+    const data = await res.json();
+    if (!data) return;
+
+    // Kernel
+    const kEl = document.getElementById('kernelText');
+    if (kEl && data.kernel) {
+      kEl.textContent = data.kernel;
     }
+
+    // Distro
+    const dEl = document.getElementById('distroText');
+    if (dEl) {
+      const pretty = data.pretty_name || '';
+      const code   = data.version_codename || '';
+      const like   = data.id_like || '';
+
+      let text = pretty || '';
+
+      const extra = [];
+
+      // 1) codename PRETTY_NAME içinde zaten geçiyorsa tekrar ekleme
+      if (code) {
+        const prettyLower = pretty.toLowerCase();
+        const codeLower = code.toLowerCase();
+        if (!prettyLower.includes(codeLower)) {
+          extra.push(code);
+        }
+      }
+
+      // 2) id_like varsa ekle
+      if (like) {
+        extra.push(like);
+      }
+
+      // 3) ekstra varsa PRETTY_NAME sonuna ekle
+      if (extra.length > 0) {
+        text = text || 'Linux';
+        text += ` (${extra.join(' / ')})`;
+      }
+
+      // 4) hiçbir bilgi yoksa
+      if (!text) {
+        text = 'N/A';
+      }
+
+      dEl.textContent = text;
+    }
+
+  } catch (e) {
+    console.error('system-info alınamadı', e);
   }
+}
 
-  document.addEventListener('DOMContentLoaded', () => {
-    loadKernelVersion();
-  });
+// Sayfa açılırken hem sistem bilgisini hem kartları yükle
+async function init() {
+  await loadSystemInfo();  // kernel + distro
+  await loadOnce();        // kartlar
+}
 
-  // İlk yükleme
-  await loadOnce();
-
-
-  
+init();
 
 </script>
 </body>
