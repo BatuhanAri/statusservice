@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import subprocess
+from . import docker_logs # docker_logs modülünü içe aktar
 
 
 # Yol/konfig
@@ -26,6 +27,9 @@ cfg = load_cfg()
 
 # FastAPI uygulaması
 app = FastAPI(title="IFE Health")
+
+# Docker Logs router
+app.include_router(docker_logs.router)
 
 # System Services router
 from .host_health import router as host_health_router

@@ -388,7 +388,9 @@ body{
         Kontrol
       </button>
       <a class="btn" href="/static/ip-service.html" title="IP alan cihazları görüntüle">IP-Service</a>
+        <a class="btn" href="/static/logs-service.html" title="Container loglarını görüntüle"> Logs-Service </a>
     </div>
+
   </header>
 
 <div class="stats" role="status" aria-live="polite">
@@ -546,6 +548,16 @@ function makeCard(svc) {
     className: `card ${stateCls}`,
     tabindex: 0,
   });
+  
+   if (svc.type === 'docker') {
+    section.style.cursor = 'pointer';
+    section.addEventListener('click', () => {
+      const containerName = svc.key || svc.name;
+      // Logs-Service sayfasına container query ile git
+      window.location.href =
+        '/static/logs-service.html?container=' + encodeURIComponent(containerName);
+    });
+  }
 
   // Başlık: sadece servis adı
   const title = el('h2', {}, [
@@ -574,7 +586,7 @@ function makeCard(svc) {
     );
   }
 
-  // >>> BURASI YENİ: Versiyon badge olarak
+  // Versiyon badge
   if (svc.version) {
     badges.push(
       el('span', { className: 'badge' }, [
