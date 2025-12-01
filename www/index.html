@@ -711,6 +711,9 @@ function makeCard(svc) {
           healthVersions[name.toLowerCase()] = String(v);
         }
       }
+      
+      await enrichSystemServiceVersion();
+
 
 
       staticServices = [];
@@ -813,6 +816,26 @@ async function loadSystemInfo() {
     console.error('system-info alınamadı', e);
   }
 }
+async function enrichSystemServiceVersion() {
+  try {
+    const res = await fetch('/api/system-service/version', {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) {
+      console.error('system-service/version http error', res.status);
+      return;
+    }
+    const data = await res.json();
+    if (!data || !data.version) return;
+
+    // healthVersions içine override edelim
+    healthVersions['system-service'] = String(data.version);
+  } catch (err) {
+    console.error('system-service/version fetch error', err);
+  }
+}
+
+
 
 // Sayfa açılırken hem sistem bilgisini hem kartları yükle
 async function init() {

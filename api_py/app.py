@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import subprocess
 from . import docker_logs 
-
+from . import system_service_version as system_service_version_api
 
 # Yol/konfig
 OS_RELEASE = "/host-etc-os-release"
@@ -14,6 +14,7 @@ BASE = Path(__file__).parent
 ROOT = BASE.parent
 CFG  = BASE / "config.yaml"
 WWW  = ROOT / "www"
+
 
 def load_cfg() -> Dict[str, Any]:
     cfg = yaml.safe_load(CFG.read_text()) if CFG.exists() else {}
@@ -30,6 +31,10 @@ app = FastAPI(title="IFE Health")
 
 # Docker Logs router
 app.include_router(docker_logs.router)
+
+# System Service Version router
+app.include_router(system_service_version_api.router)
+
 
 # System Services router
 from .host_health import router as host_health_router
