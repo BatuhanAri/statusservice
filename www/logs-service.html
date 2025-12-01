@@ -278,6 +278,8 @@
       padding:4px 10px;
       font-size:11px;
       cursor:pointer;
+      color: #e5edf7;
+      font-weight: 600;
     }
     .log-pagination button:disabled{
       opacity:0.4;
@@ -452,7 +454,7 @@ list.forEach(item => {
         }
 
         const data = await res.json();
-        allLogLines = data.lines || [];
+        allLogLines = (data.lines || []).slice().reverse();
         currentPage = 1;
         renderLogPage();
       } catch (e) {
@@ -475,16 +477,18 @@ list.forEach(item => {
       }
 
       const totalPages = Math.max(1, Math.ceil(total / pageSize));
+
       if (currentPage > totalPages) currentPage = totalPages;
       if (currentPage < 1) currentPage = 1;
 
-      const end = total - (currentPage - 1) * pageSize;
-      const start = Math.max(0, end - pageSize);
+      const start = (currentPage - 1) * pageSize;
+      const end   = Math.min(total, start + pageSize);
       const linesForPage = allLogLines.slice(start, end);
 
       for (const line of linesForPage) {
         const div = document.createElement('div');
         const upper = line.toUpperCase();
+
         if (upper.includes('ERROR')) div.className = 'log-line log-error';
         else if (upper.includes('WARN')) div.className = 'log-line log-warn';
         else div.className = 'log-line log-info';

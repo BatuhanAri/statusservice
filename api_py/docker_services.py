@@ -11,7 +11,6 @@ router = APIRouter(
 def list_docker_services():
     """
     Docker soketi üzerinden aktif konteynerleri listeler.
-    CLI kurulumuna ihtiyaç duymaz, sadece socket bağlantısı ister.
     """
     try:
         # Docker istemcisini başlat (Ortam değişkenlerinden veya soketten otomatik algılar)
@@ -39,7 +38,6 @@ def list_docker_services():
         return items
 
     except docker.errors.DockerException as e:
-        # Bu hata genellikle /var/run/docker.sock bağlı değilse alınır
         print(f"Docker Bağlantı Hatası: {e}")
         raise HTTPException(
             status_code=500, 

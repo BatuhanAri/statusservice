@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import subprocess
-from . import docker_logs # docker_logs modülünü içe aktar
+from . import docker_logs 
 
 
 # Yol/konfig
