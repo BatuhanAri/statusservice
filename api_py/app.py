@@ -1,13 +1,14 @@
 import asyncio, httpx, yaml, time, os, subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-import subprocess
+
 from . import docker_logs 
 from . import system_service_version as system_service_version_api
 from . import system_logs 
+
 
 # Yol/konfig
 OS_RELEASE = "/host-etc-os-release"
@@ -188,6 +189,19 @@ def get_pkg_version(pkg: str) -> Optional[str]:
         return None
 
     return None
+
+# IP adresi çekme
+# IP adresi çekme
+@app.get("/api/client-ip")
+def api_client_ip(request: Request):
+    # Reverse proxy arkasında ise X-Forwarded-For / X-Real-IP'e bak
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        ip = xff.split(",")[0].strip()
+    else:
+        ip = request.headers.get("x-real-ip") or (request.client.host if request.client else None)
+    return {"ip": ip or ""}
+
 
 
 def fetch_version_systemctl(unit_name: str) -> Optional[str]:

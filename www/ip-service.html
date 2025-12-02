@@ -81,6 +81,46 @@
       color: #e5edf7;             
     }
 
+    .myip-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 12px;
+  border-radius:999px;
+  background:
+    radial-gradient(circle at 0 0, rgba(56,189,248,.20), transparent 55%),
+    rgba(15,23,42,.96);
+  border:1px solid rgba(56,189,248,.7);
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,1),
+    0 0 14px rgba(56,189,248,.55);
+  font-size:.78rem;
+  letter-spacing:.03em;
+  color:#e5f2ff;
+}
+
+.myip-dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:#22c55e;
+  box-shadow:0 0 8px rgba(34,197,94,.9);
+}
+
+.myip-label{
+  text-transform:uppercase;
+  font-weight:600;
+  opacity:.8;
+}
+
+.myip-value{
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight:600;
+  padding:2px 6px;
+  border-radius:6px;
+  background:rgba(15,23,42,.9);
+}
+
 
 
   </style>
@@ -107,6 +147,12 @@
       <button class="btn" id="ref">Refresh</button>
       <button class="btn" id="auto">Otomatic : Close</button>
       <button class="btn" id="export">JSON Download</button>
+
+      <span id="myip" class="myip-chip" title="Your IP">
+        <span class="myip-dot"></span>
+        <span class="myip-label">Your IP</span>
+        <span id="myipValue" class="myip-value">127.0.0.1</span>
+      </span>
     </div>
 
     <table>
@@ -328,6 +374,27 @@ document.querySelectorAll("thead th").forEach(th=>{
     render(currentData);
   });
 });
+
+(async () => {
+  const valEl = document.getElementById("myipValue");
+  if (!valEl) return;
+
+  try {
+    const r = await fetch("/api/client-ip", {
+      headers: { "Accept": "application/json" }
+    });
+    if (!r.ok) {
+      valEl.textContent = "(error)";
+      return;
+    }
+    const d = await r.json();
+    valEl.textContent = d.ip || "—";
+  } catch (e) {
+    valEl.textContent = "(unavailable)";
+  }
+})();
+
+
 
 
 load();
