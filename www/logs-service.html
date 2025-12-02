@@ -358,8 +358,10 @@
   </footer>
 
   <script type="module">
-    const DOCKER_URL = '/api/docker-services';
-    const SYSTEM_LOGS_URL = '/api/system-logs';
+const SYSTEMD_URL = '/api/system-services';
+const DOCKER_URL = '/api/docker-services';
+const SYSTEM_LOGS_URL = '/api/system-logs';
+
 
     let allLogLines = [];
     let currentPage = 1;
@@ -382,41 +384,49 @@
 
     /* ---------- SYSTEMD SERVICES (ÜST GRID) ---------- */
 
-    async function loadSystemServices() {
-      const grid = document.getElementById('sysGrid');
-      grid.innerHTML = 'System services yükleniyor...';
+async function loadSystemServices() {
+  const grid = document.getElementById('sysGrid');
+  grid.innerHTML = 'System services yükleniyor...';
 
-      const data = await fetchJSON(`${SYSTEM_LOGS_URL}?lines=50`).catch(() => null);
+  // ARTIK /api/system-logs DEĞİL, /api/system-services KULLANIYORUZ
+  const items = await fetchJSON(SYSTEMD_URL).catch(() => null);
 
-      if (!data || !Array.isArray(data.items) || data.items.length === 0) {
-        grid.textContent = 'System service bulunamadı.';
-        return;
-      }
+  if (!Array.isArray(items) || items.length === 0) {
+    grid.textContent = 'System service bulunamadı.';
+    return;
+  }
 
-      systemMeta = data.items;
-      grid.innerHTML = '';
+  // title vs için meta burada dursun
+  systemMeta = items;
+  grid.innerHTML = '';
 
-      data.items.forEach(item => {
-        const card = document.createElement('div');
-        // durum bilgimiz yok, nötr görünsün diye sadece "mini-card"
-        card.className = 'mini-card ok';
-        card.dataset.serviceId = item.id;
+  items.forEach(item => {
+    const running = item.state === 'up';
+    const stateCls = running ? 'ok' : 'bad';
+    const dotCls   = running ? 'okdot' : 'baddot';
 
-        card.innerHTML = `
-          <div class="mini-header">
-            <span class="mini-name">${item.name || item.id}</span>
-            <span class="mini-dot okdot"></span>
-          </div>
-          <div class="mini-status">${item.unit || ''}</div>
-        `;
+    const card = document.createElement('div');
+    card.className = `mini-card ${stateCls}`;
+    card.dataset.serviceId = item.id;
 
-        card.addEventListener('click', () => {
-          selectSystemService(item.id);
-        });
+    card.innerHTML = `
+      <div class="mini-header">
+        <span class="mini-name">${item.name || item.id}</span>
+        <span class="mini-dot ${dotCls}"></span>
+      </div>
+      <div class="mini-status">
+        ${item.state || 'unknown'}${item.unit ? ' · ' + item.unit : ''}
+      </div>
+    `;
 
-        grid.appendChild(card);
-      });
-    }
+    card.addEventListener('click', () => {
+      selectSystemService(item.id);
+    });
+
+    grid.appendChild(card);
+  });
+}
+
 
     function markActiveSystemCard(idOrNull) {
       const grid = document.getElementById('sysGrid');
