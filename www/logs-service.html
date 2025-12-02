@@ -136,76 +136,76 @@
         grid-template-columns:repeat(2,minmax(0,1fr));
       }
     }
-.mini-card{
-  background:
-    radial-gradient(circle at 0 0, rgba(37,99,235,.25), transparent 55%),
-    radial-gradient(circle at 100% 0, rgba(96,165,250,.20), transparent 55%),
-    var(--card);
-  border:1px solid var(--bd);
-  border-left-width:6px;
-  border-radius:var(--radius);
-  padding:10px 12px;
-  box-shadow:0 4px 18px rgba(0,0,0,.45);
-  transition: transform .18s ease, box-shadow .18s ease, border-color .2s ease, background .2s ease;
-  font-size:.8rem;
-  cursor:pointer;
-  display:flex;
-  flex-direction:column;
-  gap:6px;
-  min-height:60px;
-}
 
-/* main'deki card.ok / card.bad gibi */
-.mini-card.ok{
-  border-left-color:var(--ok);
-}
-.mini-card.bad{
-  border-left-color:var(--bad);
-}
+    .mini-card{
+      background:
+        radial-gradient(circle at 0 0, rgba(37,99,235,.25), transparent 55%),
+        radial-gradient(circle at 100% 0, rgba(96,165,250,.20), transparent 55%),
+        var(--card);
+      border:1px solid var(--bd);
+      border-left-width:6px;
+      border-radius:var(--radius);
+      padding:10px 12px;
+      box-shadow:0 4px 18px rgba(0,0,0,.45);
+      transition: transform .18s ease, box-shadow .18s ease, border-color .2s ease, background .2s ease;
+      font-size:.8rem;
+      cursor:pointer;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      min-height:60px;
+    }
 
-.mini-card:hover{
-  transform:translateY(-2px);
-  box-shadow:0 14px 32px rgba(0,0,0,.65);
-  border-color:rgba(59,130,246,.75);
-  background:
-    radial-gradient(circle at 0 0, rgba(59,130,246,.45), transparent 60%),
-    radial-gradient(circle at 100% 0, rgba(37,99,235,.35), transparent 60%),
-    var(--card);
-}
+    /* main'deki card.ok / card.bad gibi */
+    .mini-card.ok{
+      border-left-color:var(--ok);
+    }
+    .mini-card.bad{
+      border-left-color:var(--bad);
+    }
 
-.mini-card.active{
-  box-shadow:0 0 0 1px rgba(56,189,248,.7), 0 14px 32px rgba(0,0,0,.65);
-}
+    .mini-card:hover{
+      transform:translateY(-2px);
+      box-shadow:0 14px 32px rgba(0,0,0,.65);
+      border-color:rgba(59,130,246,.75);
+      background:
+        radial-gradient(circle at 0 0, rgba(59,130,246,.45), transparent 60%),
+        radial-gradient(circle at 100% 0, rgba(37,99,235,.35), transparent 60%),
+        var(--card);
+    }
 
-/* Üst satır için küçük header */
-.mini-header{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:6px;
-}
+    .mini-card.active{
+      box-shadow:0 0 0 1px rgba(56,189,248,.7), 0 14px 32px rgba(0,0,0,.65);
+    }
 
-.mini-name{
-  font-weight:600;
-  word-break:break-all;
-}
+    /* Üst satır için küçük header */
+    .mini-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:6px;
+    }
 
-.mini-status{
-  font-size:.7rem;
-  color:var(--muted);
-}
+    .mini-name{
+      font-weight:600;
+      word-break:break-all;
+    }
 
-/* Sağdaki küçük dot */
-.mini-dot{
-  width:10px;
-  height:10px;
-  border-radius:3px;
-}
-.mini-dot.okdot{ background:var(--ok); }
-.mini-dot.baddot{ background:var(--bad); }
+    .mini-status{
+      font-size:.7rem;
+      color:var(--muted);
+    }
 
+    /* Sağdaki küçük dot */
+    .mini-dot{
+      width:10px;
+      height:10px;
+      border-radius:3px;
+    }
+    .mini-dot.okdot{ background:var(--ok); }
+    .mini-dot.baddot{ background:var(--bad); }
 
-    /* Log panel (önceki tasarımın aynısı) */
+    /* Log panel */
     #log-panel{
       margin-top:4px;
       background:var(--card);
@@ -316,7 +316,15 @@
   </header>
 
   <main>
-    <!-- Üstte mini container grid -->
+    <!-- EN ÜSTTE systemd servis grid'i -->
+    <section class="container-grid">
+      <p class="container-grid-title">System Services (journalctl)</p>
+      <div id="sysGrid" class="mini-grid">
+        <!-- JS ile doldurulacak -->
+      </div>
+    </section>
+
+    <!-- Altında Docker container grid'i -->
     <section class="container-grid">
       <p class="container-grid-title">Docker Containers</p>
       <div id="miniGrid" class="mini-grid">
@@ -324,8 +332,8 @@
       </div>
     </section>
 
-    <!-- Altta log panel -->
-    <section id="log-panel" aria-label="Container logları">
+    <!-- Altta ortak log panel -->
+    <section id="log-panel" aria-label="Log paneli">
       <header class="log-header">
         <h2 id="logTitle">Loglar</h2>
         <button class="log-toggle" type="button" aria-label="Log panelini gizle">⌄</button>
@@ -333,7 +341,7 @@
 
       <div class="log-body" id="log-body">
         <div class="log-line log-info">
-            Click on one of the container cards above.
+            Yukarıdan bir system service veya container seçin.
         </div>
       </div>
 
@@ -351,11 +359,15 @@
 
   <script type="module">
     const DOCKER_URL = '/api/docker-services';
+    const SYSTEM_LOGS_URL = '/api/system-logs';
 
     let allLogLines = [];
     let currentPage = 1;
     const pageSize = 100;
+
     let selectedContainer = null;
+    let selectedSystemService = null;
+    let systemMeta = []; // /api/system-logs'tan gelen service listesi
 
     function getQueryParam(name) {
       const url = new URL(window.location.href);
@@ -368,6 +380,103 @@
       return res.json();
     }
 
+    /* ---------- SYSTEMD SERVICES (ÜST GRID) ---------- */
+
+    async function loadSystemServices() {
+      const grid = document.getElementById('sysGrid');
+      grid.innerHTML = 'System services yükleniyor...';
+
+      const data = await fetchJSON(`${SYSTEM_LOGS_URL}?lines=50`).catch(() => null);
+
+      if (!data || !Array.isArray(data.items) || data.items.length === 0) {
+        grid.textContent = 'System service bulunamadı.';
+        return;
+      }
+
+      systemMeta = data.items;
+      grid.innerHTML = '';
+
+      data.items.forEach(item => {
+        const card = document.createElement('div');
+        // durum bilgimiz yok, nötr görünsün diye sadece "mini-card"
+        card.className = 'mini-card ok';
+        card.dataset.serviceId = item.id;
+
+        card.innerHTML = `
+          <div class="mini-header">
+            <span class="mini-name">${item.name || item.id}</span>
+            <span class="mini-dot okdot"></span>
+          </div>
+          <div class="mini-status">${item.unit || ''}</div>
+        `;
+
+        card.addEventListener('click', () => {
+          selectSystemService(item.id);
+        });
+
+        grid.appendChild(card);
+      });
+    }
+
+    function markActiveSystemCard(idOrNull) {
+      const grid = document.getElementById('sysGrid');
+      if (!grid) return;
+      grid.querySelectorAll('.mini-card').forEach(c => {
+        if (!idOrNull) {
+          c.classList.remove('active');
+        } else if (c.dataset.serviceId === idOrNull) {
+          c.classList.add('active');
+        } else {
+          c.classList.remove('active');
+        }
+      });
+    }
+
+    async function selectSystemService(serviceId) {
+      selectedSystemService = serviceId;
+      selectedContainer = null;
+      markActiveSystemCard(serviceId);
+      // container active'leri temizle
+      markActiveCard(null);
+
+      const meta = systemMeta.find(x => x.id === serviceId);
+      const titleEl = document.getElementById('logTitle');
+      titleEl.textContent = `Loglar · ${meta ? (meta.name || meta.id) : serviceId}`;
+
+      await loadSystemServiceLogs(serviceId);
+    }
+
+    async function loadSystemServiceLogs(serviceId) {
+      const body = document.getElementById('log-body');
+      body.innerHTML =
+        `<div class="log-line log-info">${serviceId} için systemd logları yükleniyor...</div>`;
+
+      try {
+        const data = await fetchJSON(`${SYSTEM_LOGS_URL}?lines=800`);
+        const item = (data.items || []).find(x => x.id === serviceId);
+
+        if (!item || !item.logs) {
+          body.innerHTML =
+            `<div class="log-line log-info">Bu servis için log bulunamadı.</div>`;
+          allLogLines = [];
+          updatePaginationUI();
+          return;
+        }
+
+        // journalctl çıktısını satırlara böl, boşları at, EN YENİ EN ÜSTTE olacak şekilde ters çevir
+        allLogLines = item.logs.split('\n').filter(Boolean).reverse();
+        currentPage = 1;
+        renderLogPage();
+      } catch (e) {
+        body.innerHTML =
+          `<div class="log-line log-error">System logs alınırken hata: ${e}</div>`;
+        allLogLines = [];
+        updatePaginationUI();
+      }
+    }
+
+    /* ---------- DOCKER CONTAINERS (ALT GRID) ---------- */
+
     async function loadContainers() {
       const list = await fetchJSON(DOCKER_URL).catch(() => []);
       const grid = document.getElementById('miniGrid');
@@ -378,49 +487,49 @@
         return;
       }
 
-list.forEach(item => {
-  const name = item.name || item.id;
-  const status = item.status || (item.running ? 'running' : 'stopped');
+      list.forEach(item => {
+        const name = item.name || item.id;
+        const status = item.status || (item.running ? 'running' : 'stopped');
 
-  // main page'deki normalizeDocker mantığına benzer running tespiti
-  const running =
-    item.running === true ||
-    /^up/i.test(status) ||
-    /^running/i.test(status);
+        const running =
+          item.running === true ||
+          /^up/i.test(status) ||
+          /^running/i.test(status);
 
-  const stateCls = running ? 'ok' : 'bad';
+        const stateCls = running ? 'ok' : 'bad';
 
-  const card = document.createElement('div');
-  card.className = `mini-card ${stateCls}`;
-  card.dataset.container = name;
+        const card = document.createElement('div');
+        card.className = `mini-card ${stateCls}`;
+        card.dataset.container = name;
 
-  card.innerHTML = `
-    <div class="mini-header">
-      <span class="mini-name">${name}</span>
-      <span class="mini-dot ${running ? 'okdot' : 'baddot'}"></span>
-    </div>
-    <div class="mini-status">${status}</div>
-  `;
+        card.innerHTML = `
+          <div class="mini-header">
+            <span class="mini-name">${name}</span>
+            <span class="mini-dot ${running ? 'okdot' : 'baddot'}"></span>
+          </div>
+          <div class="mini-status">${status}</div>
+        `;
 
-  card.addEventListener('click', () => {
-    selectContainer(name);
-  });
+        card.addEventListener('click', () => {
+          selectContainer(name);
+        });
 
-  grid.appendChild(card);
-});
+        grid.appendChild(card);
+      });
 
-
-      // URL'den container parametresi geldiyse otomatik seç
       const fromQuery = getQueryParam('container');
       if (fromQuery) {
         selectContainer(fromQuery);
       }
     }
 
-    function markActiveCard(name) {
+    function markActiveCard(nameOrNull) {
       const grid = document.getElementById('miniGrid');
+      if (!grid) return;
       grid.querySelectorAll('.mini-card').forEach(c => {
-        if (c.dataset.container === name) {
+        if (!nameOrNull) {
+          c.classList.remove('active');
+        } else if (c.dataset.container === nameOrNull) {
           c.classList.add('active');
         } else {
           c.classList.remove('active');
@@ -430,7 +539,10 @@ list.forEach(item => {
 
     async function selectContainer(containerName) {
       selectedContainer = containerName;
+      selectedSystemService = null;
       markActiveCard(containerName);
+      // systemd kartlarını temizle
+      markActiveSystemCard(null);
 
       const titleEl = document.getElementById('logTitle');
       titleEl.textContent = `Loglar · ${containerName}`;
@@ -454,6 +566,9 @@ list.forEach(item => {
         }
 
         const data = await res.json();
+
+        // backend'in gönderdiği lines dizisi zaten eski->yeni ise
+        // reverse ile yine EN YENİ EN ÜSTTE olsun (Page 1'de)
         allLogLines = (data.lines || []).slice().reverse();
         currentPage = 1;
         renderLogPage();
@@ -464,6 +579,8 @@ list.forEach(item => {
         updatePaginationUI();
       }
     }
+
+    /* ---------- ORTAK LOG RENDER / PAGINATION ---------- */
 
     function renderLogPage() {
       const body = document.getElementById('log-body');
@@ -515,8 +632,7 @@ list.forEach(item => {
       if (nextBtn) nextBtn.disabled = (currentPage <= 1);
     }
 
-    document.addEventListener('DOMContentLoaded', () => {
-      // pagination butonları
+    document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('log-prev-btn').addEventListener('click', () => {
         currentPage += 1;
         renderLogPage();
@@ -526,16 +642,30 @@ list.forEach(item => {
         renderLogPage();
       });
 
-      // panel collapse
       const toggleBtn = document.querySelector('.log-toggle');
       const logPanel  = document.getElementById('log-panel');
       toggleBtn.addEventListener('click', () => {
         logPanel.classList.toggle('collapsed');
       });
 
-      // container listesini yükle
-      loadContainers();
+      // Önce grid'leri yükle
+      await loadSystemServices();
+      await loadContainers();
+
+      // URL param: ?service=system-service  -> systemd log
+      const svcFromUrl = getQueryParam('service');
+      if (svcFromUrl) {
+        selectSystemService(svcFromUrl);
+        return;
+      }
+
+      // URL param: ?container=xyz  -> docker log
+      const containerFromUrl = getQueryParam('container');
+      if (containerFromUrl) {
+        selectContainer(containerFromUrl);
+      }
     });
+
   </script>
 </body>
 </html>

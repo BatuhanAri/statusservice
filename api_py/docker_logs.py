@@ -7,16 +7,13 @@ router = APIRouter(
     tags=["docker-logs"],
 )
 
-# NEDEN tail=800?
-# - Loglar bazen çok büyük olabiliyor (MB'lerce)
-# - İlk adımda sadece son X satırı almak, hem hızlı hem yeterli
+
 DEFAULT_TAIL = 800
 
 @router.get("/{container_name}")
 def get_docker_logs(container_name: str, tail: int = DEFAULT_TAIL):
     """
     Belirtilen Docker container'ın son 'tail' satır logunu döndürür.
-    Şimdilik geleni olduğu gibi, satır satır bir liste olarak yolluyoruz.
     """
     try:
         client = docker.from_env()
@@ -34,7 +31,7 @@ def get_docker_logs(container_name: str, tail: int = DEFAULT_TAIL):
     try:
         raw = container.logs(
             tail=tail,
-            timestamps=True,  # NEDEN? Log satırında saat olsun istiyoruz
+            timestamps=True,  
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Loglar alınamadı: {e}")
@@ -47,5 +44,5 @@ def get_docker_logs(container_name: str, tail: int = DEFAULT_TAIL):
         "container": container_name,
         "tail": tail,
         "count": len(lines),
-        "lines": lines,   # frontend burada pagination yapacak
+        "lines": lines,   
     }

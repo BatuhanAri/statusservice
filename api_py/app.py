@@ -7,6 +7,7 @@ from fastapi.staticfiles import StaticFiles
 import subprocess
 from . import docker_logs 
 from . import system_service_version as system_service_version_api
+from . import system_logs 
 
 # Yol/konfig
 OS_RELEASE = "/host-etc-os-release"
@@ -28,6 +29,9 @@ cfg = load_cfg()
 
 # FastAPI uygulaması
 app = FastAPI(title="IFE Health")
+
+# System Logs router
+app.include_router(system_logs.router) 
 
 # Docker Logs router
 app.include_router(docker_logs.router)
@@ -292,9 +296,9 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     version = None
     pkg = t.get("pkg")
     if pkg:
-        version = get_pkg_version(pkg)  # host dpkg DB'den çekiyor (bind mount sayesinde)
+        version = get_pkg_version(pkg)  
 
-    res["version"] = version  # UI her serviste bu key'i görecek
+    res["version"] = version  
 
     # PRESENT HESAPLAMA
     pres = t.get("present", {}) or {}
@@ -311,7 +315,6 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     def present_http():
         return bool(res.get("http_ok")) if has_http else present_auto()
 
-    # systemd için systemctl'e girmiyoruz; port/http durumuna bakmak yeterli
     def present_systemd():
         return present_auto()
 

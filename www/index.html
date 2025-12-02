@@ -549,13 +549,23 @@ function makeCard(svc) {
     tabindex: 0,
   });
   
-   if (svc.type === 'docker') {
+  // Docker kartına tıklayınca container loglarına git
+  if (svc.type === 'docker') {
     section.style.cursor = 'pointer';
     section.addEventListener('click', () => {
       const containerName = svc.key || svc.name;
-      // Logs-Service sayfasına container query ile git
       window.location.href =
         '/static/logs-service.html?container=' + encodeURIComponent(containerName);
+    });
+  }
+
+  // Systemd kartına tıklayınca systemd loglarına git
+  if (svc.type === 'systemd') {
+    section.style.cursor = 'pointer';
+    section.addEventListener('click', () => {
+      const serviceId = svc.key;   // bind9, kea, nginx, system-service
+      window.location.href =
+        '/static/logs-service.html?service=' + encodeURIComponent(serviceId);
     });
   }
 
