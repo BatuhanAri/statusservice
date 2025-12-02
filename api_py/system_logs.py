@@ -2,6 +2,8 @@ import asyncio, shlex
 from typing import Any, Dict, List
 from fastapi import APIRouter
 
+JOURNAL_DIR = "/var/log/journal"
+
 router = APIRouter(
     prefix="/api/system-logs",
     tags=["system-logs"])
@@ -56,8 +58,10 @@ async def get_all_system_logs(lines: int = 80):
     for svc in SERVICES:
         unit = svc["unit"]
         # journalctl -u unit -n lines --no-pager --output=short
+
         cmd = (
-            f"journalctl -u {shlex.quote(unit)} "
+            f"journalctl -D {JOURNAL_DIR} "
+            f"-u {shlex.quote(unit)} "
             f"-n {int(lines)} --no-pager --output=short"
         )
         logs = await _run(cmd)

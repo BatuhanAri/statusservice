@@ -315,52 +315,47 @@
     </div>
   </header>
 
-  <main>
-    <!-- EN ÜSTTE systemd servis grid'i -->
-    <section class="container-grid">
-      <p class="container-grid-title">System Services (journalctl)</p>
-      <div id="sysGrid" class="mini-grid">
-        <!-- JS ile doldurulacak -->
-      </div>
-    </section>
-
-    <!-- Altında Docker container grid'i -->
-    <section class="container-grid">
-      <p class="container-grid-title">Docker Containers</p>
-      <div id="miniGrid" class="mini-grid">
-        <!-- JS ile doldurulacak -->
-      </div>
-    </section>
-
-    <!-- Altta ortak log panel -->
-    <section id="log-panel" aria-label="Log paneli">
-      <header class="log-header">
-        <h2 id="logTitle">Loglar</h2>
-        <button class="log-toggle" type="button" aria-label="Log panelini gizle">⌄</button>
-      </header>
-
-      <div class="log-body" id="log-body">
-        <div class="log-line log-info">
-            Yukarıdan bir system service veya container seçin.
+    <main>
+      <section class="container-grid">
+        <p class="container-grid-title">System Services (journalctl)</p>
+        <div id="sysGrid" class="mini-grid">
         </div>
-      </div>
+      </section>
 
-      <div class="log-pagination">
-        <button id="log-prev-btn" type="button">⬅ Older</button>
-        <span id="log-page-info">Page 1 / 1</span>
-        <button id="log-next-btn" type="button">Newer ➡</button>
-      </div>
-    </section>
-  </main>
+      <section class="container-grid">
+        <p class="container-grid-title">Docker Containers</p>
+        <div id="miniGrid" class="mini-grid">
+        </div>
+      </section>
 
-  <footer>
-    @TCI.DevOps Team · Logs-Service
-  </footer>
+      <section id="log-panel" aria-label="Log paneli">
+        <header class="log-header">
+          <h2 id="logTitle">Loglar</h2>
+          <button class="log-toggle" type="button" aria-label="Log panelini gizle">⌄</button>
+        </header>
 
-  <script type="module">
-const SYSTEMD_URL = '/api/system-services';
-const DOCKER_URL = '/api/docker-services';
-const SYSTEM_LOGS_URL = '/api/system-logs';
+        <div class="log-body" id="log-body">
+          <div class="log-line log-info">
+              Yukarıdan bir system service veya container seçin.
+          </div>
+        </div>
+
+        <div class="log-pagination">
+          <button id="log-prev-btn" type="button">⬅ Older</button>
+          <span id="log-page-info">Page 1 / 1</span>
+          <button id="log-next-btn" type="button">Newer ➡</button>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      @TCI.DevOps Team · Logs-Service
+    </footer>
+
+    <script type="module">
+    const SYSTEMD_URL = '/api/system-services';
+    const DOCKER_URL = '/api/docker-services';
+    const SYSTEM_LOGS_URL = '/api/system-logs';
 
 
     let allLogLines = [];
@@ -369,7 +364,7 @@ const SYSTEM_LOGS_URL = '/api/system-logs';
 
     let selectedContainer = null;
     let selectedSystemService = null;
-    let systemMeta = []; // /api/system-logs'tan gelen service listesi
+    let systemMeta = []; 
 
     function getQueryParam(name) {
       const url = new URL(window.location.href);
@@ -384,48 +379,47 @@ const SYSTEM_LOGS_URL = '/api/system-logs';
 
     /* ---------- SYSTEMD SERVICES (ÜST GRID) ---------- */
 
-async function loadSystemServices() {
-  const grid = document.getElementById('sysGrid');
-  grid.innerHTML = 'System services yükleniyor...';
+    async function loadSystemServices() {
+    const grid = document.getElementById('sysGrid');
+    grid.innerHTML = 'System services yükleniyor...';
 
-  // ARTIK /api/system-logs DEĞİL, /api/system-services KULLANIYORUZ
-  const items = await fetchJSON(SYSTEMD_URL).catch(() => null);
+    const items = await fetchJSON(SYSTEMD_URL).catch(() => null);
 
-  if (!Array.isArray(items) || items.length === 0) {
-    grid.textContent = 'System service bulunamadı.';
-    return;
-  }
+    if (!Array.isArray(items) || items.length === 0) {
+      grid.textContent = 'System service bulunamadı.';
+      return;
+    }
 
   // title vs için meta burada dursun
-  systemMeta = items;
-  grid.innerHTML = '';
+    systemMeta = items;
+    grid.innerHTML = '';
 
-  items.forEach(item => {
-    const running = item.state === 'up';
-    const stateCls = running ? 'ok' : 'bad';
-    const dotCls   = running ? 'okdot' : 'baddot';
+      items.forEach(item => {
+        const running = item.state === 'up';
+        const stateCls = running ? 'ok' : 'bad';
+        const dotCls   = running ? 'okdot' : 'baddot';
 
-    const card = document.createElement('div');
-    card.className = `mini-card ${stateCls}`;
-    card.dataset.serviceId = item.id;
+        const card = document.createElement('div');
+        card.className = `mini-card ${stateCls}`;
+        card.dataset.serviceId = item.id;
 
-    card.innerHTML = `
-      <div class="mini-header">
-        <span class="mini-name">${item.name || item.id}</span>
-        <span class="mini-dot ${dotCls}"></span>
-      </div>
-      <div class="mini-status">
-        ${item.state || 'unknown'}${item.unit ? ' · ' + item.unit : ''}
-      </div>
-    `;
+        card.innerHTML = `
+          <div class="mini-header">
+            <span class="mini-name">${item.name || item.id}</span>
+            <span class="mini-dot ${dotCls}"></span>
+          </div>
+          <div class="mini-status">
+            ${item.state || 'unknown'}${item.unit ? ' · ' + item.unit : ''}
+          </div>
+        `;
 
-    card.addEventListener('click', () => {
-      selectSystemService(item.id);
-    });
+        card.addEventListener('click', () => {
+          selectSystemService(item.id);
+        });
 
-    grid.appendChild(card);
-  });
-}
+        grid.appendChild(card);
+      });
+    }
 
 
     function markActiveSystemCard(idOrNull) {
@@ -473,7 +467,6 @@ async function loadSystemServices() {
           return;
         }
 
-        // journalctl çıktısını satırlara böl, boşları at, EN YENİ EN ÜSTTE olacak şekilde ters çevir
         allLogLines = item.logs.split('\n').filter(Boolean).reverse();
         currentPage = 1;
         renderLogPage();
@@ -577,8 +570,6 @@ async function loadSystemServices() {
 
         const data = await res.json();
 
-        // backend'in gönderdiği lines dizisi zaten eski->yeni ise
-        // reverse ile yine EN YENİ EN ÜSTTE olsun (Page 1'de)
         allLogLines = (data.lines || []).slice().reverse();
         currentPage = 1;
         renderLogPage();
