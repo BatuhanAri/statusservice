@@ -191,7 +191,6 @@ def get_pkg_version(pkg: str) -> Optional[str]:
     return None
 
 # IP adresi çekme
-# IP adresi çekme
 @app.get("/api/client-ip")
 def api_client_ip(request: Request):
     # Reverse proxy arkasında ise X-Forwarded-For / X-Real-IP'e bak
