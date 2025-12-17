@@ -8,6 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from . import docker_logs 
 from . import system_service_version as system_service_version_api
 from . import system_logs 
+from . import ip_leases_mod
+
 
 
 # Yol/konfig
@@ -28,8 +30,13 @@ def load_cfg() -> Dict[str, Any]:
 
 cfg = load_cfg()
 
+
+
 # FastAPI uygulaması
 app = FastAPI(title="IFE Health")
+
+# IP Leases Mod router
+app.include_router(ip_leases_mod.router)
 
 # System Logs router
 app.include_router(system_logs.router) 

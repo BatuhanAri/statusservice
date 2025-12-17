@@ -139,6 +139,10 @@
         <option value="active">Active</option>
         <option value="other">Other</option>
       </select>
+      <select id="source" aria-label="Data Source">
+        <option value="kea">Source: Kea</option>
+        <option value="csv" selected>Source: CSV</option>
+      </select>
       <select id="sort">
         <option value="ip">Sort: IP</option>
         <option value="remain">Sort: Last Time</option>
@@ -189,6 +193,7 @@
 <script>
 const $ = s=>document.querySelector(s);
 const rows=$("#rows"), meta=$("#meta"), q=$("#q"), state=$("#state"), sort=$("#sort");
+const sourceSel = $("#source");
 const btnRef=$("#ref"), btnAuto=$("#auto"), btnExport=$("#export");
 
 const prevPage=$("#prevPage"), nextPage=$("#nextPage");
@@ -210,6 +215,7 @@ function fmtSeconds(s){
 }
 
 function render(data){
+  meta.textContent = `${data.count} lease • source=${sourceSel.value} • mtime=${data.meta?.mtime_human ?? ""}`;
   currentData = data;
   let items = data.items || [];
 
@@ -294,16 +300,42 @@ function updateHeaderArrows(){
   if(span) span.style.opacity="1";
 }
 
+sourceSel.addEventListener("change", ()=>{
+  currentPage = 1;
+  load();
+});
+btnExport.addEventListener("click", ()=>{
+  const src = sourceSel?.value || "csv";
+  const url = (src === "csv")
+    ? "/api/leases"
+    : "/api/ip/leases?source=kea";
+  window.open(url, "_blank");
+});
+
+
 async function load(){
   try{
-    const r = await fetch("/api/leases");
-    if(!r.ok){ rows.innerHTML = `<tr><td colspan="8">/api/leases okunamadı (${r.status})</td></tr>`; return; }
+    const src = sourceSel?.value || "csv";
+
+    const url = (src === "csv")
+      ? "/api/leases"
+      : "/api/ip/leases?source=kea";
+
+    const r = await fetch(url);
+    if(!r.ok){
+      rows.innerHTML = `<tr><td colspan="8">${url} okunamadı (${r.status})</td></tr>`;
+      meta.textContent = "";
+      return;
+    }
+
     const data = await r.json();
     render(data);
   }catch(e){
-    rows.innerHTML = `<tr><td colspan="8">Hata: ${e}</td></tr>`;
+    rows.innerHTML = `<tr><td colspan="8">API hatası: ${e}</td></tr>`;
+    meta.textContent = "";
   }
 }
+
 
 function toggleAuto(){
   if(autoTimer){
