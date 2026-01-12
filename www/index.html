@@ -325,6 +325,37 @@ body{
     .val{display:flex; align-items:center; gap:10px}
     .hr{height:1px; background:var(--hr); margin:8px 0}
     .empty, .error, .loading{ text-align:center; color:var(--muted); padding:16px }
+    
+    .card-footer{
+      margin-top:12px;
+      padding-top:10px;
+      border-top:1px solid var(--hr);
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+    }
+    .card-actions{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      flex-wrap:wrap;
+      width:100%;
+    }
+    .btn.card-action{
+      padding:6px 10px;
+      font-size:.8rem;
+      border-radius:8px;
+    }
+    .btn.card-action.danger{
+      border-color:rgba(239,68,68,.6);
+      color:#fecaca;
+    }
+    .btn.card-action.info{
+      border-color:rgba(56,189,248,.6);
+      color:#bae6fd;
+    }
+
 
     .badges{ display:flex; flex-wrap:wrap; gap:6px; margin: 0 0 8px; }
     .badge{
@@ -479,6 +510,18 @@ body{
     if (!res.ok) throw new Error(`${url} -> HTTP ${res.status}`);
     return res.json();
   }
+  // Docker action POST isteği
+  async function postDockerAction(containerName, action) {
+    const res = await fetch(
+      `/api/docker-services/${encodeURIComponent(containerName)}/${action}`,
+      { method: 'POST' },
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || `Docker ${action} hatası`);
+    }
+    return res.json().catch(() => ({}));
+  }
 
   // ---------- Global durum ----------
   let healthVersions = {};   // /api/health -> name -> version
@@ -549,15 +592,15 @@ function makeCard(svc) {
     tabindex: 0,
   });
   
-  // Docker kartına tıklayınca container loglarına git
-  if (svc.type === 'docker') {
-    section.style.cursor = 'pointer';
-    section.addEventListener('click', () => {
-      const containerName = svc.key || svc.name;
-      window.location.href =
-        '/static/logs-service.html?container=' + encodeURIComponent(containerName);
-    });
-  }
+  // // Docker kartına tıklayınca container loglarına git
+  // if (svc.type === 'docker') {
+  //   section.style.cursor = 'pointer';
+  //   section.addEventListener('click', () => {
+  //     const containerName = svc.key || svc.name;
+  //     window.location.href =
+  //       '/static/logs-service.html?container=' + encodeURIComponent(containerName);
+  //   });
+  // }
 
   // Systemd kartına tıklayınca systemd loglarına git
   if (svc.type === 'systemd') {
@@ -620,8 +663,72 @@ function makeCard(svc) {
 
   const meta = el('div', { className: 'meta' }, rows);
 
-  section.append(title, badgesWrap, meta);
-  return section;
+  const actions = [];
+  if (svc.type === 'docker') {
+    const stopStartBtn = el('button', {
+      className: 'btn card-action danger',
+      type: 'button',
+      textContent: 'Docker Stop-Start',
+    });
+    stopStartBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      stopStartBtn.disabled = true;
+      try {
+        await postDockerAction(svc.key || svc.name, 'stop-start');
+        await loadOnce();
+      } catch (err) {
+        console.error(err);
+        alert('Docker Stop-Start işlemi başarısız.');
+      } finally {
+        stopStartBtn.disabled = false;
+      }
+    });
+
+    const restartBtn = el('button', {
+      className: 'btn card-action danger',
+      type: 'button',
+      textContent: 'Docker Restart',
+    });
+    restartBtn.addEventListener('click', async (event) => {
+      event.preventDefault();
+      restartBtn.disabled = true;
+      try {
+        await postDockerAction(svc.key || svc.name, 'restart');
+        await loadOnce();
+      } catch (err) {
+        console.error(err);
+        alert('Docker Restart işlemi başarısız.');
+      } finally {
+        restartBtn.disabled = false;
+      }
+    });
+    actions.push(stopStartBtn, restartBtn);
+  }
+
+  const logBtn = el('button', {
+    className: 'btn card-action info',
+    type: 'button',
+    textContent: 'Logs',
+  });
+  logBtn.addEventListener('click', (event) => {
+    event.preventDefault();
+    if (svc.type === 'docker') {
+      const containerName = svc.key || svc.name;
+      window.location.href =
+        '/static/logs-service.html?container=' + encodeURIComponent(containerName);
+    } else if (svc.type === 'systemd') {
+      const serviceId = svc.key;
+      window.location.href =
+        '/static/logs-service.html?service=' + encodeURIComponent(serviceId);
+    }
+  });
+  actions.push(logBtn);
+
+  const footer = el('div', { className: 'card-footer' }, [
+    el('div', { className: 'card-actions' }, actions),
+  ]);
+
+  section.append(title, badgesWrap, meta, footer);  return section;
 }
 
 

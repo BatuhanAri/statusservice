@@ -45,4 +45,54 @@ def list_docker_services():
         )
     except Exception as e:
         print(f"Genel Hata: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    raise HTTPException(status_code=500, detail=str(e))
+
+# Yardımcı fonksiyon: Konteyneri isme göre al
+def _get_container(client, container_name: str):
+    try:
+        return client.containers.get(container_name)
+    except docker.errors.NotFound as e:
+        raise HTTPException(status_code=404, detail="Docker container bulunamadı.") from e
+    except docker.errors.DockerException as e:
+        raise HTTPException(status_code=500, detail=f"Docker hatası: {e}") from e
+
+# Konteyneri durdur ve tekrar başlat
+@router.post("/{container_name}/stop-start")
+def stop_start_container(container_name: str):
+    try:
+        client = docker.from_env()
+        container = _get_container(client, container_name)
+        container.reload()
+        if container.status == "running":
+            container.stop(timeout=10)
+        container.start()
+        container.reload()
+        return {
+            "name": container_name,
+            "status": container.status,
+        }
+    except HTTPException:
+        raise
+    except docker.errors.DockerException as e:
+        raise HTTPException(status_code=500, detail=f"Docker hatası: {e}") from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+# Konteyneri yeniden başlat
+@router.post("/{container_name}/restart")
+def restart_container(container_name: str):
+    try:
+        client = docker.from_env()
+        container = _get_container(client, container_name)
+        container.restart(timeout=1)
+        container.reload()
+        return {
+            "name": container_name,
+            "status": container.status,
+        }
+    except HTTPException:
+        raise
+    except docker.errors.DockerException as e:
+        raise HTTPException(status_code=500, detail=f"Docker hatası: {e}") from e
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) from e
