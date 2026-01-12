@@ -51,6 +51,78 @@
     .bad{color:var(--bad);border-color:rgba(239,68,68,.4)}
     .muted{color:var(--muted)}
     .hint{color:var(--muted);font-size:.9rem;margin-top:8px}
+      .pager{
+      display:flex;
+      align-items:center;
+      justify-content:flex-end;
+      gap:8px;
+      margin-top:12px;
+      font-size:.9rem;
+      color:var(--muted);
+    }
+    .pager #pageInfo{
+      min-width:110px;
+      text-align:center;
+    }
+    .pager select{
+      background:transparent;
+      color:var(--fg);
+      border:1px solid var(--bd);
+      border-radius:10px;
+      padding:6px 8px;
+      outline:none;
+    }
+    .pager select option {
+      background-color: #020617;
+      color: #e5edf7;
+    }
+    select option {
+      background-color: #020617;  
+      color: #e5edf7;             
+    }
+
+    .myip-chip{
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 12px;
+  border-radius:999px;
+  background:
+    radial-gradient(circle at 0 0, rgba(56,189,248,.20), transparent 55%),
+    rgba(15,23,42,.96);
+  border:1px solid rgba(56,189,248,.7);
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,1),
+    0 0 14px rgba(56,189,248,.55);
+  font-size:.78rem;
+  letter-spacing:.03em;
+  color:#e5f2ff;
+}
+
+.myip-dot{
+  width:8px;
+  height:8px;
+  border-radius:999px;
+  background:#22c55e;
+  box-shadow:0 0 8px rgba(34,197,94,.9);
+}
+
+.myip-label{
+  text-transform:uppercase;
+  font-weight:600;
+  opacity:.8;
+}
+
+.myip-value{
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  font-weight:600;
+  padding:2px 6px;
+  border-radius:6px;
+  background:rgba(15,23,42,.9);
+}
+
+
+
   </style>
 </head>
 <body>
@@ -67,6 +139,10 @@
         <option value="active">Active</option>
         <option value="other">Other</option>
       </select>
+      <select id="source" aria-label="Data Source">
+        <option value="kea">Source: Kea</option>
+        <option value="csv" selected>Source: CSV</option>
+      </select>
       <select id="sort">
         <option value="ip">Sort: IP</option>
         <option value="remain">Sort: Last Time</option>
@@ -75,6 +151,12 @@
       <button class="btn" id="ref">Refresh</button>
       <button class="btn" id="auto">Otomatic : Close</button>
       <button class="btn" id="export">JSON Download</button>
+
+      <span id="myip" class="myip-chip" title="Your IP">
+        <span class="myip-dot"></span>
+        <span class="myip-label">Your IP</span>
+        <span id="myipValue" class="myip-value">127.0.0.1</span>
+      </span>
     </div>
 
     <table>
@@ -94,16 +176,37 @@
     </table>
 
     <div class="hint" id="meta"></div>
+        <div class="pager">
+      <button class="btn" id="prevPage">◀</button>
+      <span id="pageInfo"></span>
+      <button class="btn" id="nextPage">▶</button>
+
+      <select id="pageSize">
+        <option value="20" >20 / sayfa</option>
+        <option value="50">50 / sayfa</option>
+        <option value="100" selected>100 / sayfa</option>
+        <option value="500">500 / sayfa</option>
+      </select>
+    </div>
   </div>
 
 <script>
 const $ = s=>document.querySelector(s);
 const rows=$("#rows"), meta=$("#meta"), q=$("#q"), state=$("#state"), sort=$("#sort");
+const sourceSel = $("#source");
 const btnRef=$("#ref"), btnAuto=$("#auto"), btnExport=$("#export");
+
+const prevPage=$("#prevPage"), nextPage=$("#nextPage");
+const pageInfo=$("#pageInfo"), pageSizeSel=$("#pageSize");
+
 let autoTimer=null;
 let currentData = {items:[], count:0, meta:{}};
 let sortDir = 1; // 1: asc, -1: desc
 let sortKey = "ip";
+
+let currentPage = 1;
+let pageSize   = 20;
+
 
 function fmtSeconds(s){
   if(!s || s<=0) return "—";
@@ -112,8 +215,11 @@ function fmtSeconds(s){
 }
 
 function render(data){
+  meta.textContent = `${data.count} lease • source=${sourceSel.value} • mtime=${data.meta?.mtime_human ?? ""}`;
   currentData = data;
   let items = data.items || [];
+
+  // --- filtreler ---
   const needle=(q.value||"").toLowerCase().trim();
   if(needle){
     items = items.filter(x =>
@@ -127,6 +233,7 @@ function render(data){
   if(st==="active") items = items.filter(x => x.state===0 && (x.remaining_secs||0)>0);
   if(st==="other")  items = items.filter(x => !(x.state===0 && (x.remaining_secs||0)>0));
 
+  // --- sıralama ---
   items.sort((a,b)=>{
     if(sortKey==="remaining_secs") return sortDir*((a.remaining_secs||0)-(b.remaining_secs||0));
     const A=(a[sortKey]||"").toString().toLowerCase();
@@ -134,7 +241,19 @@ function render(data){
     return sortDir*A.localeCompare(B, 'tr');
   });
 
-  rows.innerHTML = items.map(x=>`
+  // --- pagination hesapları ---
+  const totalFiltered = items.length;
+  const totalPages = Math.max(1, Math.ceil(totalFiltered / pageSize));
+
+  if (currentPage > totalPages) currentPage = totalPages;
+  if (currentPage < 1) currentPage = 1;
+
+  const start = (currentPage - 1) * pageSize;
+  const end   = start + pageSize;
+  const pageItems = items.slice(start, end);
+
+  // --- tabloyu bas ---
+  rows.innerHTML = pageItems.map(x=>`
     <tr>
       <td>${x.ip||""}</td>
       <td><span class="chip">${x.mac||""}</span></td>
@@ -149,10 +268,18 @@ function render(data){
 
   const src = data.meta?.source || "kaynak yok";
   const mth = data.meta?.mtime_human || "";
-  meta.textContent = `${items.length} kayıt gösteriliyor (toplam ${data.count}) · Kaynak: ${src} · Güncelleme: ${mth}`;
+
+  // meta: sayfa / filtre / toplam
+  meta.textContent = `${pageItems.length} kayıt gösteriliyor (filtrelenmiş ${totalFiltered}, toplam ${data.count}) · Kaynak: ${src} · Güncelleme: ${mth}`;
+
+  // --- pagination UI güncelle ---
+  pageInfo.textContent = `Sayfa ${currentPage} / ${totalPages}`;
+  prevPage.disabled = currentPage === 1;
+  nextPage.disabled = currentPage === totalPages;
 
   updateHeaderArrows();
 }
+
 
 function updateHeaderArrows(){
   document.querySelectorAll("thead th").forEach(th=>{
@@ -173,16 +300,42 @@ function updateHeaderArrows(){
   if(span) span.style.opacity="1";
 }
 
+sourceSel.addEventListener("change", ()=>{
+  currentPage = 1;
+  load();
+});
+btnExport.addEventListener("click", ()=>{
+  const src = sourceSel?.value || "csv";
+  const url = (src === "csv")
+    ? "/api/leases"
+    : "/api/ip/leases?source=kea";
+  window.open(url, "_blank");
+});
+
+
 async function load(){
   try{
-    const r = await fetch("/api/leases");
-    if(!r.ok){ rows.innerHTML = `<tr><td colspan="8">/api/leases okunamadı (${r.status})</td></tr>`; return; }
+    const src = sourceSel?.value || "csv";
+
+    const url = (src === "csv")
+      ? "/api/leases"
+      : "/api/ip/leases?source=kea";
+
+    const r = await fetch(url);
+    if(!r.ok){
+      rows.innerHTML = `<tr><td colspan="8">${url} okunamadı (${r.status})</td></tr>`;
+      meta.textContent = "";
+      return;
+    }
+
     const data = await r.json();
     render(data);
   }catch(e){
-    rows.innerHTML = `<tr><td colspan="8">Hata: ${e}</td></tr>`;
+    rows.innerHTML = `<tr><td colspan="8">API hatası: ${e}</td></tr>`;
+    meta.textContent = "";
   }
 }
+
 
 function toggleAuto(){
   if(autoTimer){
@@ -193,8 +346,43 @@ function toggleAuto(){
     btnAuto.textContent="Otomatik: Açık (10sn)";
   }
 }
+// Prev / Next butonları
+prevPage.addEventListener("click", ()=>{
+  if (currentPage > 1){
+    currentPage--;
+    render(currentData);
+  }
+});
 
-[q, state, sort].forEach(el => el.addEventListener("input", load));
+nextPage.addEventListener("click", ()=>{
+  currentPage++;
+    render(currentData);
+});
+
+// Sayfa boyutu seçimi
+pageSizeSel.addEventListener("change", ()=>{
+  const v = parseInt(pageSizeSel.value, 10);
+  pageSize = isNaN(v) ? 20 : v;
+  currentPage = 1;
+  render(currentData);
+});
+
+
+[q, state].forEach(el => el.addEventListener("input", ()=>{
+  currentPage = 1;
+  render(currentData);
+}));
+
+// sort select'i için ayrı event:
+sort.addEventListener("change", ()=>{
+  const v = sort.value;
+  if (v === "ip")       sortKey = "ip";
+  else if (v === "remain") sortKey = "remaining_secs";
+  else if (v === "hostname") sortKey = "hostname";
+
+  currentPage = 1;
+  render(currentData);
+});
 btnRef.addEventListener("click", load);
 btnAuto.addEventListener("click", toggleAuto);
 btnExport.addEventListener("click", ()=>window.open("/api/leases","_blank"));
@@ -218,6 +406,27 @@ document.querySelectorAll("thead th").forEach(th=>{
     render(currentData);
   });
 });
+
+(async () => {
+  const valEl = document.getElementById("myipValue");
+  if (!valEl) return;
+
+  try {
+    const r = await fetch("/api/client-ip", {
+      headers: { "Accept": "application/json" }
+    });
+    if (!r.ok) {
+      valEl.textContent = "(error)";
+      return;
+    }
+    const d = await r.json();
+    valEl.textContent = d.ip || "—";
+  } catch (e) {
+    valEl.textContent = "(unavailable)";
+  }
+})();
+
+
 
 
 load();

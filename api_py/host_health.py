@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Host üzerindeki core servislerin (bind9, kea, nginx, docker) durumunu
+Host üzerindeki core servislerin (bind9, kea, nginx, system-service) durumunu
 systemctl üzerinden kontrol eder.
 
 - CLI:
@@ -39,9 +39,9 @@ SERVICES = [
         "name": "Nginx Reverse Proxy",
     },
     {
-        "id": "docker",
-        "unit": "docker.service",
-        "name": "Docker Engine",
+        "id": "system-service",
+        "unit": "system-service.service",
+        "name": "IFE System Service",
     },
 ]
 

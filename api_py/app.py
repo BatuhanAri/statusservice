@@ -1,17 +1,24 @@
 import asyncio, httpx, yaml, time, os, subprocess
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 
-# -----------------------------
+from . import docker_logs 
+from . import system_service_version as system_service_version_api
+from . import system_logs 
+from . import ip_leases_mod
+
+
+
 # Yol/konfig
-# -----------------------------
+OS_RELEASE = "/host-etc-os-release"
 BASE = Path(__file__).parent
 ROOT = BASE.parent
 CFG  = BASE / "config.yaml"
 WWW  = ROOT / "www"
+
 
 def load_cfg() -> Dict[str, Any]:
     cfg = yaml.safe_load(CFG.read_text()) if CFG.exists() else {}
@@ -23,20 +30,29 @@ def load_cfg() -> Dict[str, Any]:
 
 cfg = load_cfg()
 
-# -----------------------------
+
+
 # FastAPI uygulaması
-# -----------------------------
 app = FastAPI(title="IFE Health")
 
-# -----------------------------
+# IP Leases Mod router
+app.include_router(ip_leases_mod.router)
+
+# System Logs router
+app.include_router(system_logs.router) 
+
+# Docker Logs router
+app.include_router(docker_logs.router)
+
+# System Service Version router
+app.include_router(system_service_version_api.router)
+
+
 # System Services router
-# -----------------------------
 from .host_health import router as host_health_router
 app.include_router(host_health_router)
 
-# -----------------------------
 # Docker Services router
-# -----------------------------
 from .docker_services import router as docker_services_router
 app.include_router(docker_services_router)
 
@@ -61,16 +77,12 @@ def ip_service_page():
     raise HTTPException(status_code=404, detail="ip-service.html bulunamadı")
 
 
-# -----------------------------
 # Leases router
-# -----------------------------
 from .leases import router as leases_router
 app.include_router(leases_router)
 
 
-# -----------------------------
 # Cache
-# -----------------------------
 _cached: Optional[Dict[str, Any]] = None
 _cached_at: float = 0.0
 
@@ -78,9 +90,68 @@ def now() -> float:
     return time.monotonic()
 
 
-# -----------------------------
+def get_kernel_version() -> str:
+    """
+    Host kernel versiyonunu uname -r ile al.
+    """
+    try:
+        out = subprocess.check_output(
+            ["uname", "-r"], stderr=subprocess.STDOUT
+        )
+        return out.decode(errors="ignore").strip()
+    except Exception as e:
+        return f"unknown ({e.__class__.__name__})"
+
+def get_distro_info() -> Dict[str, Optional[str]]:
+    """
+    /etc/os-release içinden:
+      - PRETTY_NAME
+      - VERSION_CODENAME
+      - ID_LIKE
+    """
+    pretty_name = None
+    version_codename = None
+    id_like = None
+
+    try:
+        with open(OS_RELEASE, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                line = line.strip()
+                if not line or "=" not in line:
+                    continue
+
+                key, val = line.split("=", 1)
+
+                val = val.strip().strip('"').strip("'")
+
+                if key == "PRETTY_NAME":
+                    pretty_name = val
+                elif key == "VERSION_CODENAME":
+                    version_codename = val
+                elif key == "ID_LIKE":
+                    id_like = val
+    except Exception:
+        pass
+
+    return {
+        "pretty_name": pretty_name,
+        "version_codename": version_codename,
+        "id_like": id_like
+    }
+
+
+@app.get("/api/system-info")
+def api_system_info():
+    distro = get_distro_info()
+    return {
+        "kernel": get_kernel_version(),
+        "pretty_name": distro.get("pretty_name"),
+        "version_codename": distro.get("version_codename"),
+        "id_like": distro.get("id_like"),
+    }
+
+
 # Yardımcı kontroller
-# -----------------------------
 async def tcp_check(host: str, port: int, timeout_ms: int) -> Optional[str]:
     try:
         r, w = await asyncio.wait_for(
@@ -109,20 +180,139 @@ async def http_check(host: str, port: int, path: str, timeout_ms: int,
     except Exception as e:
         return {"http_ok": False, "error": str(e)}
 
+<<<<<<< HEAD
+=======
+def get_pkg_version(pkg: str) -> Optional[str]:
+    try:
+        out = subprocess.check_output(
+            f"dpkg -l {pkg}",
+            shell=True, stderr=subprocess.STDOUT
+        ).decode(errors="ignore").strip()
 
-# -----------------------------
+        for line in out.splitlines():
+            if line.startswith("ii"):
+                parts = line.split()
+                if len(parts) >= 3:
+                    return parts[2]  # version
+    except Exception:
+        return None
+
+    return None
+
+# IP adresi çekme
+@app.get("/api/client-ip")
+def api_client_ip(request: Request):
+    # Reverse proxy arkasında ise X-Forwarded-For / X-Real-IP'e bak
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        ip = xff.split(",")[0].strip()
+    else:
+        ip = request.headers.get("x-real-ip") or (request.client.host if request.client else None)
+    return {"ip": ip or ""}
+
+
+
+def fetch_version_systemctl(unit_name: str) -> Optional[str]:
+    """
+    systemctl -> FragmentPath -> dpkg -S -> dpkg -l zinciri ile otomatik versiyon çıkarır.
+    """
+    try:
+        # Unit path
+        out = subprocess.check_output(
+            f"systemctl show {unit_name} --property=FragmentPath",
+            shell=True, stderr=subprocess.STDOUT
+        ).decode(errors="ignore").strip()
+
+        if "=" not in out:
+            return None
+
+        frag_path = out.split("=", 1)[1].strip()
+
+        # Bu hizmet hangi paketten geliyor?
+        out = subprocess.check_output(
+            f"dpkg -S {frag_path}",
+            shell=True, stderr=subprocess.STDOUT
+        ).decode(errors="ignore").strip()
+
+        pkg = out.split(":", 1)[0].strip()
+
+        # Paket versiyonu al
+        out = subprocess.check_output(
+            f"dpkg -l {pkg}",
+            shell=True, stderr=subprocess.STDOUT
+        ).decode(errors="ignore")
+
+        for line in out.splitlines():
+            if line.startswith("ii "):
+                parts = line.split()
+                if len(parts) >= 3:
+                    return parts[2]
+
+        return None
+
+    except Exception:
+        return None
+
+
+# HTTP version çekme 
+
+async def fetch_version_http(t: Dict[str, Any], timeout_ms: int) -> Optional[str]:
+    vpath = t.get("version_path")
+    if not vpath:
+        return None
+
+    host = str(t["host"])
+    port = int(t["port"])
+    tls  = bool(t.get("tls"))
+
+    if not vpath.startswith("/"):
+        vpath = "/" + vpath
+
+    url = f"{'https' if tls else 'http'}://{host}:{port}{vpath}"
+
+    try:
+        async with httpx.AsyncClient(timeout=timeout_ms/1000) as cli:
+            r = await cli.get(url)
+    except:
+        return None
+
+    if not (200 <= r.status_code < 300):
+        return None
+
+    # JSON version destekliyse
+    try:
+        data = r.json()
+        for key in ("version", "app_version", "build", "tag", "commit"):
+            if key in data:
+                return str(data[key])
+    except:
+        txt = (r.text or "").strip()
+        return txt[:64] if txt else None
+
+    return None
+
+>>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
+
 # TEK SERVİS CHECK
-# -----------------------------
 async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     res: Dict[str, Any] = {"present": True}
+<<<<<<< HEAD
     
     # --- 1. Port Kontrolü (TCP) ---
+=======
+
+    # TCP KONTROLÜ
+>>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
     err = await tcp_check(str(t["host"]), int(t["port"]), timeout_ms)
     res["port_ok"] = (err is None)
     if err:
         res.setdefault("errors", {})["port"] = err
 
+<<<<<<< HEAD
     # --- 2. HTTP Kontrolü ---
+=======
+    # HTTP KONTROLÜ 
+>>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
     has_http = bool(t.get("http_path") or t.get("expect_status") or t.get("tls"))
     if has_http:
         h = await http_check(
@@ -134,6 +324,7 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
         if "error" in h:
             res.setdefault("errors", {})["http"] = h["error"]
 
+<<<<<<< HEAD
         # --- 3. VERSION (sadece config'ten al) ---
     res["version"] = t.get("version")
 
@@ -141,6 +332,17 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     
 
     # --- 4. PRESENT (Varlık) Kontrolü ---
+=======
+    #  VERSION (DİNAMİK - pkg + dpkg)
+    version = None
+    pkg = t.get("pkg")
+    if pkg:
+        version = get_pkg_version(pkg)  
+
+    res["version"] = version  
+
+    # PRESENT HESAPLAMA
+>>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
     pres = t.get("present", {}) or {}
     ptype = pres.get("type")
 
@@ -149,6 +351,7 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
         return bool(res.get("port_ok"))
 
     def present_systemd():
+<<<<<<< HEAD
         unit = pres.get("unit") or f"{t['name']}.service"
         try:
             # is-active 0 dönerse çalışıyordur
@@ -161,22 +364,37 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
             return rc == 0
         except:
             return False
+=======
+        return present_auto()
+>>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
 
     def present_file():
         return os.path.exists(pres.get("path", ""))
 
+<<<<<<< HEAD
     if ptype == "tcp": res["present"] = bool(res.get("port_ok"))
     elif ptype == "http": res["present"] = bool(res.get("http_ok")) if has_http else present_auto()
     elif ptype == "systemd": res["present"] = present_systemd()
     elif ptype == "file": res["present"] = present_file()
     else: res["present"] = present_auto()
+=======
+    if ptype == "tcp":
+        res["present"] = present_tcp()
+    elif ptype == "http":
+        res["present"] = present_http()
+    elif ptype == "systemd":
+        res["present"] = present_systemd()
+    elif ptype == "file":
+        res["present"] = present_file()
+    else:
+        res["present"] = present_auto()
+>>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
 
     return res
 
 
-# -----------------------------
+
 # TÜM SERVİSLER CHECK
-# -----------------------------
 async def perform() -> Dict[str, Any]:
     ts = cfg["targets"]
     rs = await asyncio.gather(*[check_one(t, int(cfg["timeout_ms"])) for t in ts])
@@ -192,9 +410,7 @@ def cached() -> Dict[str, Any]:
     return data
 
 
-# -----------------------------
 # API ROUTES
-# -----------------------------
 @app.get("/health")
 def liveness():
     return {"status": "up"}
