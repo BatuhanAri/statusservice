@@ -180,8 +180,7 @@ async def http_check(host: str, port: int, path: str, timeout_ms: int,
     except Exception as e:
         return {"http_ok": False, "error": str(e)}
 
-<<<<<<< HEAD
-=======
+
 def get_pkg_version(pkg: str) -> Optional[str]:
     try:
         out = subprocess.check_output(
@@ -291,28 +290,21 @@ async def fetch_version_http(t: Dict[str, Any], timeout_ms: int) -> Optional[str
 
     return None
 
->>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
 
 # TEK SERVİS CHECK
 async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     res: Dict[str, Any] = {"present": True}
-<<<<<<< HEAD
     
     # --- 1. Port Kontrolü (TCP) ---
-=======
 
     # TCP KONTROLÜ
->>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
     err = await tcp_check(str(t["host"]), int(t["port"]), timeout_ms)
     res["port_ok"] = (err is None)
     if err:
         res.setdefault("errors", {})["port"] = err
 
-<<<<<<< HEAD
     # --- 2. HTTP Kontrolü ---
-=======
     # HTTP KONTROLÜ 
->>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
     has_http = bool(t.get("http_path") or t.get("expect_status") or t.get("tls"))
     if has_http:
         h = await http_check(
@@ -324,7 +316,6 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
         if "error" in h:
             res.setdefault("errors", {})["http"] = h["error"]
 
-<<<<<<< HEAD
         # --- 3. VERSION (sadece config'ten al) ---
     res["version"] = t.get("version")
 
@@ -332,7 +323,7 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     
 
     # --- 4. PRESENT (Varlık) Kontrolü ---
-=======
+
     #  VERSION (DİNAMİK - pkg + dpkg)
     version = None
     pkg = t.get("pkg")
@@ -342,7 +333,6 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     res["version"] = version  
 
     # PRESENT HESAPLAMA
->>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
     pres = t.get("present", {}) or {}
     ptype = pres.get("type")
 
@@ -351,7 +341,6 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
         return bool(res.get("port_ok"))
 
     def present_systemd():
-<<<<<<< HEAD
         unit = pres.get("unit") or f"{t['name']}.service"
         try:
             # is-active 0 dönerse çalışıyordur
@@ -364,20 +353,16 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
             return rc == 0
         except:
             return False
-=======
         return present_auto()
->>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
 
     def present_file():
         return os.path.exists(pres.get("path", ""))
 
-<<<<<<< HEAD
     if ptype == "tcp": res["present"] = bool(res.get("port_ok"))
     elif ptype == "http": res["present"] = bool(res.get("http_ok")) if has_http else present_auto()
     elif ptype == "systemd": res["present"] = present_systemd()
     elif ptype == "file": res["present"] = present_file()
     else: res["present"] = present_auto()
-=======
     if ptype == "tcp":
         res["present"] = present_tcp()
     elif ptype == "http":
@@ -388,7 +373,6 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
         res["present"] = present_file()
     else:
         res["present"] = present_auto()
->>>>>>> 7699d2704d8b177b20f3c7f8f9fd5bed41a61e1b
 
     return res
 
