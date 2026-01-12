@@ -668,20 +668,22 @@ function makeCard(svc) {
 
   const actions = [];
   if (svc.type === 'docker') {
+    const isRunning = svc.ok;
     const stopStartBtn = el('button', {
       className: 'btn card-action danger',
       type: 'button',
-      textContent: 'Docker Stop-Start',
+      textContent: isRunning ? 'Docker Stop' : 'Docker Start',
     });
     stopStartBtn.addEventListener('click', async (event) => {
       event.preventDefault();
       stopStartBtn.disabled = true;
       try {
-        await postDockerAction(svc.key || svc.name, 'stop-start');
+        const action = isRunning ? 'stop' : 'start';
+        await postDockerAction(svc.key || svc.name, action);
         await loadOnce();
       } catch (err) {
         console.error(err);
-        alert('Docker Stop-Start işlemi başarısız.');
+        alert(isRunning ? 'Docker Stop işlemi başarısız.' : 'Docker Start işlemi başarısız.');
       } finally {
         stopStartBtn.disabled = false;
       }

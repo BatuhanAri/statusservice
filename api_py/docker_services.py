@@ -71,7 +71,7 @@ def stop_start_container(ref: str):
 
     status, health, exit_code, err = _state(container)
 
-    # 1) Eğer çalışıyorsa önce STOP et
+    # Eğer çalışıyorsa önce STOP et
     if status in ("running", "restarting"):
         container.stop(timeout=15)
 
@@ -89,18 +89,18 @@ def stop_start_container(ref: str):
                 },
             )
 
-    # 2) START (Burayı 'else' içinden çıkardık, ana akışa aldık)
+    # START
     # Böylece hem durmuş olanlar başlar, hem de yukarıda durdurduklarımız tekrar başlar.
     try:
         container.start()
     except Exception as e:
          raise HTTPException(status_code=500, detail=f"Start komutu verilemedi: {e}")
 
-    # 3) Çalıştığından emin ol
+    # Çalıştığından emin ol
     ok = _wait(container, lambda: _state(container)[0] == "running", timeout=30)
     s, h, ec, er = _state(container)
 
-    # BURADAKİ HATA DÜZELTİLDİ: Sadece 'ok' False ise hata fırlatıyoruz.
+    # Sadece 'ok' False ise hata fırlatıyoruz.
     if not ok:
         logs = _tail_logs(container, n=120)
         raise HTTPException(
@@ -109,6 +109,65 @@ def stop_start_container(ref: str):
                 "message": "Container running durumuna gelemedi (muhtemel crash/config/port hatası).",
                 "status": s, "health": h, "exit_code": ec, "error": er,
                 "logs_tail": logs[-4000:], 
+            },
+        )
+
+    
+    return {"id": container.id, "name": container.name, "status": s, "health": h}
+
+# Tek tek start/stop için endpointler de ekleme
+@router.post("/{ref}/start")
+def start_container(ref: str):
+    client = _client()
+    container = _get_container(client, ref)
+
+    status, health, exit_code, err = _state(container)
+    if status == "running":
+        return {"id": container.id, "name": container.name, "status": status, "health": health}
+
+    try:
+        container.start()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Start komutu verilemedi: {e}")
+
+    ok = _wait(container, lambda: _state(container)[0] == "running", timeout=30)
+    s, h, ec, er = _state(container)
+    if not ok:
+        logs = _tail_logs(container, n=120)
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Container running durumuna gelemedi (muhtemel crash/config/port hatası).",
+                "status": s, "health": h, "exit_code": ec, "error": er,
+                "logs_tail": logs[-4000:],
+            },
+        )
+
+    return {"id": container.id, "name": container.name, "status": s, "health": h}
+
+# Tek tek start/stop için endpointler de ekleme
+@router.post("/{ref}/stop")
+def stop_container(ref: str):
+    client = _client()
+    container = _get_container(client, ref)
+
+    status, health, exit_code, err = _state(container)
+    if status not in ("running", "restarting"):
+        return {"id": container.id, "name": container.name, "status": status, "health": health}
+
+    try:
+        container.stop(timeout=15)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Stop komutu verilemedi: {e}")
+
+    ok = _wait(container, lambda: _state(container)[0] == "exited", timeout=30)
+    s, h, ec, er = _state(container)
+    if not ok:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": "Container stop tamamlanmadı (timeout).",
+                "status": s, "health": h, "exit_code": ec, "error": er,
             },
         )
 
