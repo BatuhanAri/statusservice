@@ -717,7 +717,6 @@ function makeCard(svc) {
         const action = isRunning ? 'stop' : 'start';
         await postDockerAction(svc.key || svc.name, action);
         await loadOnce();
-        actionSucceeded = true;
       } catch (err) {
         console.error(err);
         alert(isRunning ? 'Docker Stop işlemi başarısız.' : 'Docker Start işlemi başarısız.');
