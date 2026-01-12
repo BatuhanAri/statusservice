@@ -298,6 +298,9 @@ body{
       padding:14px;
       box-shadow: 0 4px 18px rgba(0,0,0,.45);
       transition: transform .18s ease, box-shadow .18s ease, border-color .2s ease, background .2s ease;
+      display:flex; 
+      flex-direction:column;
+      height: 100%;
     }
     .card.ok{ border-left-color:var(--ok) }
     .card.bad{ border-left-color:var(--bad) }
@@ -327,7 +330,7 @@ body{
     .empty, .error, .loading{ text-align:center; color:var(--muted); padding:16px }
     
     .card-footer{
-      margin-top:12px;
+      margin-top:auto;
       padding-top:10px;
       border-top:1px solid var(--hr);
       display:flex;

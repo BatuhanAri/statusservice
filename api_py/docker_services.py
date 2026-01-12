@@ -1,6 +1,7 @@
 import docker
 from fastapi import APIRouter, HTTPException
 import os
+import time
 
 router = APIRouter(
     prefix="/api/docker-services",
@@ -56,17 +57,36 @@ def _get_container(client, container_name: str):
     except docker.errors.DockerException as e:
         raise HTTPException(status_code=500, detail=f"Docker hatası: {e}") from e
 
-# Konteyneri durdur ve tekrar başlat
 @router.post("/{container_name}/stop-start")
 def stop_start_container(container_name: str):
     try:
         client = docker.from_env()
         container = _get_container(client, container_name)
+        
+        # Güncel durumu al
         container.reload()
+        
         if container.status == "running":
+            # Timeout süresini artırın (örn: 10sn), uygulamanın gracefully kapanmasına izin verin
             container.stop(timeout=10)
-        container.start()
+            
+            # KRİTİK NOKTA: Konteynerin tamamen durmasını bekle
+            # Wait, konteyner durana kadar (exit code dönene kadar) bekletir.
+            container.wait() 
+        
+        # Emin olmak için tekrar durumu yenile
         container.reload()
+        
+        # Eğer zaten durmuşsa veya durdurma işlemi bittiyse başlat
+        if container.status != "running":
+            container.start()
+            
+            # Başlattıktan sonra hemen "running" durumuna geçmeyebilir,
+            # kısa bir bekleme veya kontrol döngüsü eklenebilir.
+            # Ancak genellikle start blocking değildir, reload ile durumu görmek yeterlidir.
+            time.sleep(1) # Opsiyonel: Docker daemon'ın state'i güncellemesi için minik bir pay.
+            container.reload()
+
         return {
             "name": container_name,
             "status": container.status,
@@ -78,14 +98,20 @@ def stop_start_container(container_name: str):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e)) from e
 
-# Konteyneri yeniden başlat
 @router.post("/{container_name}/restart")
 def restart_container(container_name: str):
     try:
         client = docker.from_env()
         container = _get_container(client, container_name)
-        container.restart(timeout=1)
+        
+        # Restart işlemi Docker tarafında daha atomiktir (bütündür), 
+        # ancak timeout süresini makul tutmak gerekir.
+        container.restart(timeout=10)
+        
+        # Durumun güncellenmesi için kısa bir süre tanıyıp reload yapıyoruz
+        time.sleep(1) 
         container.reload()
+        
         return {
             "name": container_name,
             "status": container.status,
