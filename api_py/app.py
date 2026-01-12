@@ -333,7 +333,8 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     res["version"] = version  
 
     # PRESENT HESAPLAMA
-    pres = t.get("present", {}) or {}
+    pres_raw = t.get("present", {})
+    pres = pres_raw if isinstance(pres_raw, dict) else {}
     ptype = pres.get("type")
 
     def present_auto():
