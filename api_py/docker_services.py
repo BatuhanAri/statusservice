@@ -149,13 +149,14 @@ def start_container(ref: str):
 
     return {"id": container.id, "name": container.name, "status": s, "health": h}
 
+# Tek tek start/stop için endpointler de ekleme
 @router.post("/{ref}/restart")
 def restart_container(ref: str):
     client = _client()
     container = _get_container(client, ref)
 
     try:
-        container.restart(timeout=15)
+        container.restart(timeout=3)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Restart komutu verilemedi: {e}")
 

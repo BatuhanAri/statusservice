@@ -738,16 +738,22 @@ function makeCard(svc) {
     });
     restartBtn.addEventListener('click', async (event) => {
       event.preventDefault();
-      restartBtn.disabled = true;
+      const setRestartPending = (pending) => {
+        section.classList.toggle('is-stopping', pending);
+        statusTextEl.textContent = pending ? 'Bekleyiniz...' : svc.statusText;
+        restartBtn.textContent = pending ? 'Bekleyiniz...' : 'Docker Restart';
+        actionButtons.forEach((btn) => {
+          btn.disabled = pending;
+        });
+      };
+      setRestartPending(true);      
       try {
         await postDockerAction(svc.key || svc.name, 'restart');
         await loadOnce();
-        actionSucceeded = true;
       } catch (err) {
         console.error(err);
-        alert('Docker Restart işlemi başarısız.');
       } finally {
-        restartBtn.disabled = false;
+        setRestartPending(false);
       }
     });
     actionButtons.push(stopStartBtn, restartBtn); 
