@@ -17,7 +17,7 @@ OS_RELEASE = "/host-etc-os-release"
 BASE = Path(__file__).parent
 ROOT = BASE.parent
 CFG  = BASE / "config.yaml"
-WWW  = ROOT / "www"
+WWW  = ROOT / "www" 
 
 
 def load_cfg() -> Dict[str, Any]:
@@ -359,20 +359,15 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     def present_file():
         return os.path.exists(pres.get("path", ""))
 
-    if ptype == "tcp": res["present"] = bool(res.get("port_ok"))
-    elif ptype == "http": res["present"] = bool(res.get("http_ok")) if has_http else present_auto()
-    elif ptype == "systemd": res["present"] = present_systemd()
-    elif ptype == "file": res["present"] = present_file()
-    else: res["present"] = present_auto()
-    if ptype == "tcp":
-        res["present"] = present_tcp()
-    elif ptype == "http":
-        res["present"] = present_http()
-    elif ptype == "systemd":
+    if ptype == "tcp": 
+        res["present"] = bool(res.get("port_ok"))
+    elif ptype == "http": 
+        res["present"] = bool(res.get("http_ok")) if has_http else present_auto()
+    elif ptype == "systemd": 
         res["present"] = present_systemd()
-    elif ptype == "file":
+    elif ptype == "file": 
         res["present"] = present_file()
-    else:
+    else: 
         res["present"] = present_auto()
 
     return res
