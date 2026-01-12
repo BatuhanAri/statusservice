@@ -88,6 +88,10 @@ def stop_start_container(ref: str):
                     "status": s, "health": h, "exit_code": ec, "error": er
                 },
             )
+        
+        # Durduktan sonra state al
+        return {"id": container.id, "name": container.name, "status": s, "health": h}
+
 
     # START
     # Böylece hem durmuş olanlar başlar, hem de yukarıda durdurduklarımız tekrar başlar.

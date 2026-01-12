@@ -304,6 +304,10 @@ body{
     }
     .card.ok{ border-left-color:var(--ok) }
     .card.bad{ border-left-color:var(--bad) }
+    .card.is-stopping{
+      opacity: .7;
+      pointer-events: none;
+    }
     .card:hover{
       transform:translateY(-2px);
       box-shadow:0 14px 32px rgba(0,0,0,.65);
@@ -326,6 +330,8 @@ body{
     .row{display:flex; justify-content:space-between; align-items:center}
     .label{color:var(--muted); font-size:.9rem}
     .val{display:flex; align-items:center; gap:10px}
+    .status-text{color:var(--muted); font-size:.85rem}
+
     .hr{height:1px; background:var(--hr); margin:8px 0}
     .empty, .error, .loading{ text-align:center; color:var(--muted); padding:16px }
     
@@ -656,19 +662,30 @@ function makeCard(svc) {
 
   const badgesWrap = el('div', { className: 'badges' }, badges);
 
+  const statusTextEl = el('span', {
+    className: 'status-text',
+    textContent: svc.statusText,
+  });
   const rows = [];
   rows.push(
     el('div', { className: 'row' }, [
       el('span', { className: 'label', textContent: 'Durum' }),
-      el('span', { className: 'val' }, chip(svc.ok ? 'ok' : 'bad', svc.statusText)),
+      el('span', { className: 'val' }, [
+        chip(svc.ok ? 'ok' : 'bad', svc.statusText),
+        statusTextEl,
+      ]),
     ]),
   );
 
   const meta = el('div', { className: 'meta' }, rows);
 
   const actions = [];
+  let actionButtons = null;
+
   if (svc.type === 'docker') {
     const isRunning = svc.ok;
+    actionButtons = [];
+
     const stopStartBtn = el('button', {
       className: 'btn card-action danger',
       type: 'button',
@@ -677,14 +694,40 @@ function makeCard(svc) {
     stopStartBtn.addEventListener('click', async (event) => {
       event.preventDefault();
       stopStartBtn.disabled = true;
+
+      const isStopAction = isRunning;
+      const setStopPending = (pending) => {
+        section.classList.toggle('is-stopping', pending);
+        statusTextEl.textContent = pending ? 'Bekleyiniz...' : svc.statusText;
+        stopStartBtn.textContent = pending
+          ? 'Bekleyiniz...'
+          : isRunning
+            ? 'Docker Stop'
+            : 'Docker Start';
+        actionButtons.forEach((btn) => {
+          btn.disabled = pending;
+        });
+      };
+      if (isStopAction) {
+        setStopPending(true);
+      }
+      let actionSucceeded = false;
+
       try {
         const action = isRunning ? 'stop' : 'start';
         await postDockerAction(svc.key || svc.name, action);
         await loadOnce();
+        actionSucceeded = true;
       } catch (err) {
         console.error(err);
         alert(isRunning ? 'Docker Stop işlemi başarısız.' : 'Docker Start işlemi başarısız.');
+        if(isStopAction){
+          setStopPending(false);
+        }
       } finally {
+        if (isStopAction && actionSucceeded) {
+          return;
+        }
         stopStartBtn.disabled = false;
       }
     });
@@ -700,6 +743,7 @@ function makeCard(svc) {
       try {
         await postDockerAction(svc.key || svc.name, 'restart');
         await loadOnce();
+        actionSucceeded = true;
       } catch (err) {
         console.error(err);
         alert('Docker Restart işlemi başarısız.');
@@ -707,6 +751,7 @@ function makeCard(svc) {
         restartBtn.disabled = false;
       }
     });
+    actionButtons.push(stopStartBtn, restartBtn); 
     actions.push(stopStartBtn, restartBtn);
   }
 
@@ -727,6 +772,9 @@ function makeCard(svc) {
         '/static/logs-service.html?service=' + encodeURIComponent(serviceId);
     }
   });
+  if (actionButtons) {
+    actionButtons.push(logBtn);
+  }
   actions.push(logBtn);
 
   const footer = el('div', { className: 'card-footer' }, [
