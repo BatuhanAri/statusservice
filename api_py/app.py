@@ -19,7 +19,7 @@ ROOT = BASE.parent
 CFG  = BASE / "config.yaml"
 WWW  = ROOT / "www" 
 
-
+# Konfig yükleme
 def load_cfg() -> Dict[str, Any]:
     cfg = yaml.safe_load(CFG.read_text()) if CFG.exists() else {}
     cfg = cfg or {}
@@ -86,10 +86,11 @@ app.include_router(leases_router)
 _cached: Optional[Dict[str, Any]] = None
 _cached_at: float = 0.0
 
+# Şimdiki zaman (monotonic)
 def now() -> float:
     return time.monotonic()
 
-
+# Kernel versiyon çekme
 def get_kernel_version() -> str:
     """
     Host kernel versiyonunu uname -r ile al.
@@ -102,6 +103,7 @@ def get_kernel_version() -> str:
     except Exception as e:
         return f"unknown ({e.__class__.__name__})"
 
+# Dağıtım bilgisi çekme
 def get_distro_info() -> Dict[str, Optional[str]]:
     """
     /etc/os-release içinden:
@@ -139,7 +141,7 @@ def get_distro_info() -> Dict[str, Optional[str]]:
         "id_like": id_like
     }
 
-
+# System info API
 @app.get("/api/system-info")
 def api_system_info():
     distro = get_distro_info()
@@ -165,7 +167,7 @@ async def tcp_check(host: str, port: int, timeout_ms: int) -> Optional[str]:
     except Exception as e:
         return str(e)
 
-
+# HTTP KONTROLÜ
 async def http_check(host: str, port: int, path: str, timeout_ms: int,
                      tls: bool, expect: Optional[List[int]]):
     url = f"{'https' if tls else 'http'}://{host}:{port}{path if path.startswith('/') else '/'+path}"
@@ -210,7 +212,7 @@ def api_client_ip(request: Request):
     return {"ip": ip or ""}
 
 
-
+# systemctl versiyon çekme
 def fetch_version_systemctl(unit_name: str) -> Optional[str]:
     """
     systemctl -> FragmentPath -> dpkg -S -> dpkg -l zinciri ile otomatik versiyon çıkarır.
@@ -224,7 +226,7 @@ def fetch_version_systemctl(unit_name: str) -> Optional[str]:
 
         if "=" not in out:
             return None
-
+        
         frag_path = out.split("=", 1)[1].strip()
 
         # Bu hizmet hangi paketten geliyor?
@@ -254,7 +256,6 @@ def fetch_version_systemctl(unit_name: str) -> Optional[str]:
 
 
 # HTTP version çekme 
-
 async def fetch_version_http(t: Dict[str, Any], timeout_ms: int) -> Optional[str]:
     vpath = t.get("version_path")
     if not vpath:
@@ -295,15 +296,14 @@ async def fetch_version_http(t: Dict[str, Any], timeout_ms: int) -> Optional[str
 async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     res: Dict[str, Any] = {"present": True}
     
-    # --- 1. Port Kontrolü (TCP) ---
-
+    # --- Port Kontrolü (TCP) ---
     # TCP KONTROLÜ
     err = await tcp_check(str(t["host"]), int(t["port"]), timeout_ms)
     res["port_ok"] = (err is None)
     if err:
         res.setdefault("errors", {})["port"] = err
 
-    # --- 2. HTTP Kontrolü ---
+    # --- HTTP Kontrolü ---
     # HTTP KONTROLÜ 
     has_http = bool(t.get("http_path") or t.get("expect_status") or t.get("tls"))
     if has_http:
@@ -322,8 +322,7 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
 
     
 
-    # --- 4. PRESENT (Varlık) Kontrolü ---
-
+    # ---  PRESENT (Varlık) Kontrolü ---
     #  VERSION (DİNAMİK - pkg + dpkg)
     version = None
     pkg = t.get("pkg")
@@ -337,10 +336,12 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
     pres = pres_raw if isinstance(pres_raw, dict) else {}
     ptype = pres.get("type")
 
+    # OTOMATİK VARLIK KONTROLÜ
     def present_auto():
         if has_http: return bool(res.get("http_ok"))
         return bool(res.get("port_ok"))
-
+    
+    # SYSTEMD VARLIK KONTROLÜ
     def present_systemd():
         unit = pres.get("unit") or f"{t['name']}.service"
         try:
@@ -354,11 +355,12 @@ async def check_one(t: Dict[str, Any], timeout_ms: int) -> Dict[str, Any]:
             return rc == 0
         except:
             return False
-        return present_auto()
 
+    # FILE VARLIK KONTROLÜ
     def present_file():
         return os.path.exists(pres.get("path", ""))
 
+    # PRESENT TÜRÜNE GÖRE DEĞER
     if ptype == "tcp": 
         res["present"] = bool(res.get("port_ok"))
     elif ptype == "http": 
@@ -380,7 +382,7 @@ async def perform() -> Dict[str, Any]:
     rs = await asyncio.gather(*[check_one(t, int(cfg["timeout_ms"])) for t in ts])
     return {t["name"]: r for t, r in zip(ts, rs)}
 
-
+# Cache'li sonuç
 def cached() -> Dict[str, Any]:
     global _cached, _cached_at
     if _cached and (now() - _cached_at) < int(cfg["cache_secs"]):
@@ -395,10 +397,12 @@ def cached() -> Dict[str, Any]:
 def liveness():
     return {"status": "up"}
 
+# API health check
 @app.get("/api/health")
 def api_health():
     return JSONResponse(content=cached())
 
+# API force run
 @app.post("/api/run")
 async def api_run():
     data = await perform()

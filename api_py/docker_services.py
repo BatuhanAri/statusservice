@@ -4,6 +4,7 @@ from fastapi import APIRouter, HTTPException
 
 router = APIRouter(prefix="/api/docker-services", tags=["docker-services"])
 
+# Docker client objesini döner, erişilemiyorsa 500 hatası fırlatır
 def _client():
     try:
         c = docker.from_env()
@@ -11,7 +12,8 @@ def _client():
         return c
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Docker daemon erişilemiyor: {e}")
-
+    
+# Belirtilen ref (name veya full id) ile container objesini döner
 def _get_container(client, ref: str):
     try:
         # ref = full id veya name kullan.
@@ -21,6 +23,7 @@ def _get_container(client, ref: str):
     except docker.errors.DockerException as e:
         raise HTTPException(status_code=500, detail=f"Docker hatası: {e}") from e
 
+# Container state bilgisini döner
 def _state(container):
     container.reload()
     st = container.attrs.get("State", {}) or {}
@@ -30,6 +33,7 @@ def _state(container):
     err = st.get("Error")
     return status, health, exit_code, err
 
+# Belirtilen predicate fonksiyonu timeout süresi içinde True dönerse True, aksi halde False döner
 def _wait(container, predicate, timeout=20, poll=0.5):
     end = time.time() + timeout
     last = None
@@ -40,12 +44,14 @@ def _wait(container, predicate, timeout=20, poll=0.5):
         time.sleep(poll)
     return False
 
+# Container loglarının son n satırını döner
 def _tail_logs(container, n=80):
     try:
         return container.logs(tail=n).decode("utf-8", errors="replace")
     except Exception:
         return ""
-
+    
+# Tüm docker containerları listeler
 @router.get("")
 def list_docker_services():
     client = _client()
@@ -64,6 +70,7 @@ def list_docker_services():
         })
     return items
 
+# Stop-Start endpointi
 @router.post("/{ref}/stop-start")
 def stop_start_container(ref: str):
     client = _client()
