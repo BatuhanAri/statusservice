@@ -9,6 +9,8 @@ from . import docker_logs
 from . import system_service_version as system_service_version_api
 from . import system_logs 
 from . import ip_leases_mod
+from . import jenkins_deploys
+
 
 
 
@@ -46,7 +48,8 @@ app.include_router(docker_logs.router)
 
 # System Service Version router
 app.include_router(system_service_version_api.router)
-
+# Jenkins Deploys router
+app.include_router(jenkins_deploys.router)
 
 # System Services router
 from .host_health import router as host_health_router

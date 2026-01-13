@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>DeployCT-Service | IFE Health</title>
+  <meta id="themeColor" name="theme-color" content="#0b1220">
+  <style>
+    :root{
+      --bg:#0b1220;
+      --fg:#e8edf7;
+      --muted:#9aa6b2;
+      --card:#0f172a;
+      --bd:#1f2a44;
+      --ok:#22c55e;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,Ubuntu,sans-serif;background:var(--bg);color:var(--fg)}
+    header{display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--bd)}
+    a.btn,button.btn{color:var(--fg);text-decoration:none;border:1px solid var(--bd);padding:8px 12px;border-radius:10px;background:transparent;cursor:pointer}
+    .wrap{max-width:1200px;margin:24px auto;padding:0 16px}
+    .tools{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+    input,select{background:transparent;color:var(--fg);border:1px solid var(--bd);padding:8px 10px;border-radius:10px;outline:none}
+    .summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:20px}
+    .card{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:14px}
+    .card h3{margin:0 0 6px 0;font-size:.95rem;color:var(--muted)}
+    .card .value{font-size:1.5rem;font-weight:700}
+    .badge{display:inline-flex;align-items:center;gap:6px;padding:2px 10px;border-radius:999px;border:1px solid var(--bd);font-size:.75rem}
+    .badge.ok{color:var(--ok);border-color:rgba(34,197,94,.4)}
+    .badge.warn{color:var(--warn);border-color:rgba(245,158,11,.4)}
+    .badge.bad{color:var(--bad);border-color:rgba(239,68,68,.4)}
+    table{width:100%;border-collapse:separate;border-spacing:0 8px}
+    th,td{text-align:left;padding:10px 12px}
+    th{font-size:.85rem;color:var(--muted);text-transform:uppercase;letter-spacing:.05em}
+    tr{background:var(--card);border:1px solid var(--bd)}
+    tr > td:first-child, tr > th:first-child {border-top-left-radius:12px;border-bottom-left-radius:12px}
+    tr > td:last-child, tr > th:last-child {border-top-right-radius:12px;border-bottom-right-radius:12px}
+    .section-title{display:flex;align-items:center;gap:10px;margin:20px 0 10px}
+    .section-title h2{margin:0;font-size:1.05rem}
+    .muted{color:var(--muted)}
+    .error{margin-top:12px;color:var(--bad)}
+    .loading{opacity:.7}
+  </style>
+</head>
+<body>
+  <header>
+    <div><strong>IFE Health</strong> · <span class="muted">DeployCT-Service</span></div>
+    <nav><a class="btn" href="/" title="Dashboard">Dashboard</a></nav>
+  </header>
+
+  <div class="wrap">
+    <div class="tools">
+      <label>
+        <span class="muted">Gün</span><br />
+        <input id="days" type="number" min="1" max="60" value="7" />
+      </label>
+      <label>
+        <span class="muted">Job Filter (Regex)</span><br />
+        <input id="include" placeholder="deploy" />
+      </label>
+      <label>
+        <span class="muted">Hariç Tut (Regex)</span><br />
+        <input id="exclude" placeholder="test|dev" />
+      </label>
+      <label>
+        <span class="muted">Başarılı Deploy</span><br />
+        <select id="successOnly">
+          <option value="true" selected>SUCCESS</option>
+          <option value="false">Tümü</option>
+        </select>
+      </label>
+      <button class="btn" id="refresh">Refresh</button>
+    </div>
+
+    <div class="summary">
+      <div class="card">
+        <h3>Toplam Deploy</h3>
+        <div class="value" id="totalDeploy">0</div>
+        <span class="badge ok" id="rangeBadge">0 gün</span>
+      </div>
+      <div class="card">
+        <h3>Bugün</h3>
+        <div class="value" id="todayDeploy">0</div>
+        <span class="badge warn" id="todayDate">--</span>
+      </div>
+      <div class="card">
+        <h3>Job Sayısı</h3>
+        <div class="value" id="jobCount">0</div>
+        <span class="badge" id="filterInfo">Filter: -</span>
+      </div>
+    </div>
+
+    <div class="section-title">
+      <h2>Günlük Toplamlar</h2>
+      <span class="muted" id="dailyRange"></span>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Tarih</th>
+          <th>Deploy</th>
+        </tr>
+      </thead>
+      <tbody id="dailyRows"></tbody>
+    </table>
+
+    <div class="section-title">
+      <h2>Item Bazlı Deploy</h2>
+      <span class="muted">Her job için toplam ve günlük dağılım.</span>
+    </div>
+    <table>
+      <thead>
+        <tr id="itemHeader"></tr>
+      </thead>
+      <tbody id="itemRows"></tbody>
+    </table>
+
+    <div id="error" class="error"></div>
+  </div>
+
+<script>
+const $ = (selector) => document.querySelector(selector);
+const daysInput = $("#days");
+const includeInput = $("#include");
+const excludeInput = $("#exclude");
+const successSelect = $("#successOnly");
+const refreshBtn = $("#refresh");
+
+const totalDeploy = $("#totalDeploy");
+const todayDeploy = $("#todayDeploy");
+const jobCount = $("#jobCount");
+const rangeBadge = $("#rangeBadge");
+const todayDate = $("#todayDate");
+const filterInfo = $("#filterInfo");
+const dailyRange = $("#dailyRange");
+
+const dailyRows = $("#dailyRows");
+const itemHeader = $("#itemHeader");
+const itemRows = $("#itemRows");
+const errorBox = $("#error");
+
+function setLoading(state) {
+  document.body.classList.toggle("loading", state);
+  refreshBtn.disabled = state;
+  refreshBtn.textContent = state ? "Yükleniyor..." : "Refresh";
+}
+
+function buildRow(cells) {
+  const tr = document.createElement("tr");
+  cells.forEach((cell) => {
+    const td = document.createElement("td");
+    td.textContent = cell;
+    tr.appendChild(td);
+  });
+  return tr;
+}
+
+function buildHeader(cells) {
+  itemHeader.innerHTML = "";
+  cells.forEach((cell) => {
+    const th = document.createElement("th");
+    th.textContent = cell;
+    itemHeader.appendChild(th);
+  });
+}
+
+async function fetchData() {
+  setLoading(true);
+  errorBox.textContent = "";
+  try {
+    const params = new URLSearchParams({
+      days: daysInput.value || "7",
+      max_builds: "200",
+      success_only: successSelect.value,
+    });
+    if (includeInput.value) params.set("include", includeInput.value);
+    if (excludeInput.value) params.set("exclude", excludeInput.value);
+
+    const resp = await fetch(`/api/jenkins/deploys?${params.toString()}`);
+    if (!resp.ok) {
+      const text = await resp.text();
+      throw new Error(text || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+
+    render(data);
+  } catch (err) {
+    errorBox.textContent = `Veri alınamadı: ${err.message}`;
+    totalDeploy.textContent = "0";
+    todayDeploy.textContent = "0";
+    jobCount.textContent = "0";
+    dailyRows.innerHTML = "";
+    itemRows.innerHTML = "";
+  } finally {
+    setLoading(false);
+  }
+}
+
+function render(data) {
+  const daily = data.daily || [];
+  const items = data.items || [];
+  const lastDay = daily[daily.length - 1];
+
+  totalDeploy.textContent = data.total ?? 0;
+  todayDeploy.textContent = lastDay ? lastDay.count : 0;
+  jobCount.textContent = items.length;
+  rangeBadge.textContent = `${data.days} gün`;
+  todayDate.textContent = lastDay ? lastDay.date : "--";
+
+  const include = data.filters?.include || "-";
+  const exclude = data.filters?.exclude || "-";
+  filterInfo.textContent = `Filter: ${include} | Hariç: ${exclude}`;
+
+  dailyRange.textContent = daily.length ? `${daily[0].date} → ${daily[daily.length - 1].date}` : "";
+
+  dailyRows.innerHTML = "";
+  daily.forEach((row) => {
+    dailyRows.appendChild(buildRow([row.date, row.count]));
+  });
+
+  const dateHeaders = daily.map((row) => row.date);
+  buildHeader(["Item", "Toplam", ...dateHeaders]);
+
+  itemRows.innerHTML = "";
+  items.forEach((item) => {
+    const dailyMap = new Map(item.daily.map((entry) => [entry.date, entry.count]));
+    const row = [item.name, item.total, ...dateHeaders.map((date) => dailyMap.get(date) ?? 0)];
+    itemRows.appendChild(buildRow(row));
+  });
+
+  if (data.errors?.length) {
+    errorBox.textContent = `Hata alınan joblar: ${data.errors.join(", ")}`;
+  }
+}
+
+refreshBtn.addEventListener("click", fetchData);
+
+fetchData();
+</script>
+</body>
+</html>
