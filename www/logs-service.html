@@ -490,10 +490,9 @@
         `<div class="log-line log-info">${serviceId} için systemd logları yükleniyor...</div>`;
 
       try {
-        const data = await fetchJSON(`${SYSTEM_LOGS_URL}?lines=800`);
-        const item = (data.items || []).find(x => x.id === serviceId);
-
-        if (!item || !item.logs) {
+        // API'den logları al
+        const lines = await fetchSystemServiceLogLines(serviceId);
+        if (lines.length === 0) {
           body.innerHTML =
             `<div class="log-line log-info">Bu servis için log bulunamadı.</div>`;
           allLogLines = [];
@@ -501,7 +500,8 @@
           return;
         }
 
-        allLogLines = item.logs.split('\n').filter(Boolean).reverse();
+        // Logları ters çevir (yeni en üstte)
+        allLogLines = lines.slice().reverse();
         currentPage = 1;
         renderLogPage();
       } catch (e) {
@@ -584,10 +584,12 @@
       const titleEl = document.getElementById('logTitle');
       titleEl.textContent = `Loglar · ${containerName}`;
 
+      // Live moddaysak direkt başlat
+      if (liveEnabled) {
+        startLiveStream();
+        return;
+      }
       await loadContainerLogs(containerName);
-      // live refresh ayarla
-      scheduleLiveRefresh();
-
     }
 
     async function loadContainerLogs(containerName) {
@@ -595,19 +597,18 @@
       body.innerHTML =
         `<div class="log-line log-info">${containerName} için loglar yükleniyor...</div>`;
 
+      // API'den logları al
       try {
-        const res = await fetch(`/api/docker-logs/${encodeURIComponent(containerName)}?tail=800`);
-        if (!res.ok) {
-          body.innerHTML =
-            `<div class="log-line log-error">Loglar alınamadı: ${res.status}</div>`;
+        const lines = await fetchContainerLogLines(containerName);
+        if (lines.length === 0) {
+          body.innerHTML = `<div class="log-line log-info">Gösterilecek log yok.</div>`;
           allLogLines = [];
           updatePaginationUI();
           return;
         }
 
-        const data = await res.json();
-
-        allLogLines = (data.lines || []).slice().reverse();
+        // Logları ters çevir (yeni en üstte)
+        allLogLines = lines.slice().reverse();
         currentPage = 1;
         renderLogPage();
       } catch (e) {
@@ -669,6 +670,63 @@
       if (prevBtn) prevBtn.disabled = (currentPage >= totalPages);
       if (nextBtn) nextBtn.disabled = (currentPage <= 1);
     }
+    // API çağrıları
+    async function fetchSystemServiceLogLines(serviceId) {
+      const data = await fetchJSON(`${SYSTEM_LOGS_URL}?lines=800`);
+      const item = (data.items || []).find(x => x.id === serviceId);
+      if (!item || !item.logs) return [];
+      return item.logs.split('\n').filter(Boolean);
+    }
+    // Docker logları al
+    async function fetchContainerLogLines(containerName) {
+      const res = await fetch(`/api/docker-logs/${encodeURIComponent(containerName)}?tail=800`);
+      if (!res.ok) {
+        throw new Error(`Loglar alınamadı: ${res.status}`);
+      }
+      const data = await res.json();
+      return (data.lines || []).filter(Boolean);
+    }
+    // Live log stream
+    function closeLiveStream() {
+      if (liveSource) {
+        liveSource.close();
+        liveSource = null;
+      }
+    }
+    // Live log satırı işleme
+    function handleLiveLine(line) {
+      if (!line) return;
+      allLogLines.unshift(line);
+      if (allLogLines.length > liveMaxLines) {
+        allLogLines = allLogLines.slice(0, liveMaxLines);
+      }
+      if (currentPage === 1) {
+        renderLogPage();
+      }
+    }
+    // Live log başlatma
+    function startLiveStream() {
+      closeLiveStream();
+      if (!liveEnabled || (!selectedSystemService && !selectedContainer)) {
+        return;
+      }
+      
+      currentPage = 1;
+      allLogLines = [];
+      document.getElementById('log-body').innerHTML =
+        '<div class="log-line log-info">Live loglar bekleniyor...</div>';
+
+      const url = selectedSystemService
+        ? `/api/system-logs/stream/${encodeURIComponent(selectedSystemService)}?tail=200`
+        : `/api/docker-logs/${encodeURIComponent(selectedContainer)}/stream?tail=200`;
+
+      liveSource = new EventSource(url);
+      liveSource.onmessage = (event) => handleLiveLine(event.data);
+      liveSource.onerror = () => {
+        // bağlantı koparsa sessizce kapanır; tekrar live açılınca yeniden bağlanır
+        closeLiveStream();
+      };
+    }
 
     // Live log refresh
     async function refreshSelectedLogs() {
@@ -714,15 +772,21 @@
         logPanel.classList.toggle('collapsed');
       });
       
+      
       // Live toggle
       const liveToggle = document.getElementById('live-toggle');
       liveToggle.addEventListener('change', async (event) => {
         liveEnabled = event.target.checked;
-        if (liveEnabled) {
-          currentPage = 1;
-          await refreshSelectedLogs();
+        if (!liveEnabled) {
+          closeLiveStream();
+          if (selectedSystemService) {
+            await loadSystemServiceLogs(selectedSystemService);
+          } else if (selectedContainer) {
+            await loadContainerLogs(selectedContainer);
+          }
+          return;
         }
-        scheduleLiveRefresh();
+        startLiveStream();
       });
 
       // Önce grid'leri yükle

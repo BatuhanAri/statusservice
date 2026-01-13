@@ -1,9 +1,11 @@
 # api_py/docker_logs.py
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
+import asyncio
 import docker
 from pathlib import Path
 import json
-from typing import List
+from typing import AsyncIterator, List, Optional
 
 router = APIRouter(
     prefix="/api/docker-logs",
@@ -47,6 +49,25 @@ def read_log_file_lines(path: Path, tail: int) -> List[str]:
 
     return raw_lines
 
+# Belirtilen log satırını parse eder, zaman damgası ve log mesajını ayırır
+def parse_log_line(raw_line: str) -> Optional[str]:
+    line = raw_line.strip()
+    if not line:
+        return None
+    try:
+        obj = json.loads(line)
+        msg = (obj.get("log") or "").rstrip("\n")
+        ts = obj.get("time")
+        if ts:
+            return f"{ts} {msg}"
+        return msg
+    except json.JSONDecodeError:
+        return line
+
+# SSE formatında mesaj paketler
+def _sse_pack(message: str) -> str:
+    clean = message.replace("\r", "")
+    return "".join(f"data: {line}\n" for line in clean.split("\n")) + "\n"
 
 @router.get("/{container_name}")
 def get_docker_logs(container_name: str, tail: int = DEFAULT_TAIL):
@@ -95,3 +116,58 @@ def get_docker_logs(container_name: str, tail: int = DEFAULT_TAIL):
         "count": len(lines),
         "lines": lines,
     }
+
+# Canlı log akışı için SSE endpoint
+@router.get("/{container_name}/stream")
+async def stream_docker_logs(container_name: str, tail: int = 200):
+    """
+    Docker container loglarını SSE (text/event-stream) olarak canlı yayında döndürür.
+    tail > 0 ise önce son tail satırı gönderir, sonra yeni satırları takip eder.
+    """
+    try:
+        client = docker.from_env()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Docker'a bağlanılamadı: {e}")
+
+    try:
+        container = client.containers.get(container_name)
+    except docker.errors.NotFound:
+        raise HTTPException(status_code=404, detail=f"Container bulunamadı: {container_name}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Container okunamadı: {e}")
+
+    attrs = getattr(container, "attrs", {}) or {}
+    log_path_str = attrs.get("LogPath")
+
+    if not log_path_str:
+        raise HTTPException(
+            status_code=500,
+            detail="Bu container için LogPath bilgisi bulunamadı (json-file log-driver kullanmıyor olabilir).",
+        )
+
+    log_path = Path(log_path_str)
+
+    # SSE event stream generator
+    async def event_stream() -> AsyncIterator[str]:
+        try:
+            if tail and tail > 0:
+                for line in read_log_file_lines(log_path, tail):
+                    yield _sse_pack(line)
+        except Exception:
+            yield _sse_pack("Log dosyası okunamadı.")
+
+        try:
+            with log_path.open("r", encoding="utf-8", errors="ignore") as handle:
+                handle.seek(0, 2)
+                while True:
+                    raw_line = handle.readline()
+                    if not raw_line:
+                        await asyncio.sleep(0.5)
+                        continue
+                    parsed = parse_log_line(raw_line)
+                    if parsed:
+                        yield _sse_pack(parsed)
+        except asyncio.CancelledError:
+            return
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

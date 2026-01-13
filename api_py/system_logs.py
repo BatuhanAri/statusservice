@@ -1,6 +1,8 @@
 import asyncio, shlex
-from typing import Any, Dict, List
-from fastapi import APIRouter
+from pathlib import Path
+from typing import Any, AsyncIterator, Dict, List, Optional
+from fastapi import APIRouter, HTTPException
+from fastapi.responses import StreamingResponse
 
 # Ubuntu'da runtime journal genelde /run/log/journal,
 # persistent açıksa /var/log/journal da olur.
@@ -69,7 +71,28 @@ async def _get_logs_for_unit(unit: str, lines: int) -> str:
     # Hiçbirinde log bulamazsak, son çıktıyı döneriz (muhtemelen "-- No entries --")
     return last_output
 
+# Belirtilen mesajı SSE formatına çevirir
+def _sse_pack(message: str) -> str:
+    clean = message.replace("\r", "")
+    return "".join(f"data: {line}\n" for line in clean.split("\n")) + "\n"
 
+# Belirtilen service_id için service unit adını döner
+def _find_service_unit(service_id: str) -> Optional[str]:
+    for svc in SERVICES:
+        if svc["id"] == service_id:
+            return svc["unit"]
+    return None
+
+# Uygun journal dizinini seçer
+def _select_journal_dir() -> Optional[str]:
+    for d in JOURNAL_DIRS:
+        if d is None:
+            continue
+        if Path(d).is_dir():
+            return d
+    return None
+
+# Tüm system service loglarını döner
 @router.get("")
 async def get_all_system_logs(lines: int = 80):
     items: List[Dict[str, Any]] = []
@@ -89,3 +112,51 @@ async def get_all_system_logs(lines: int = 80):
         )
 
     return {"items": items, "lines": lines}
+
+# Belirtilen service_id için system log akışı döner
+@router.get("/stream/{service_id}")
+async def stream_system_logs(service_id: str, tail: int = 200):
+    unit = _find_service_unit(service_id)
+    if not unit:
+        raise HTTPException(status_code=404, detail=f"System service bulunamadı: {service_id}")
+
+    # Canlı log akışı için SSE endpoint
+    async def event_stream() -> AsyncIterator[str]:
+        journal_dir = _select_journal_dir()
+        # journalctl komutunu hazırla
+        if journal_dir:
+            cmd = (
+                f"journalctl -D {shlex.quote(journal_dir)} "
+                f"-u {shlex.quote(unit)} "
+                f"-n {int(tail)} -f --no-pager --output=short"
+            )
+        else:
+            cmd = (
+                f"journalctl -u {shlex.quote(unit)} "
+                f"-n {int(tail)} -f --no-pager --output=short"
+            )
+        # Log akış süreci başlat
+        proc = await asyncio.create_subprocess_shell(
+            cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+
+        # Log satırlarını oku ve SSE formatında yayınla
+        try:
+            assert proc.stdout is not None
+            while True:
+                line = await proc.stdout.readline()
+                if not line:
+                    await asyncio.sleep(0.2)
+                    continue
+                text = line.decode(errors="replace").rstrip("\n")
+                if text:
+                    yield _sse_pack(text)
+        except asyncio.CancelledError:
+            proc.terminate()
+            return
+        finally:
+            proc.terminate()
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
