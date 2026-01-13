@@ -396,6 +396,10 @@
     let liveIntervalId = null;
     // Live refresh aralığı (ms)
     const liveIntervalMs = 3000;
+        // Live stream için EventSource
+    let liveSource = null;
+    // Live modda hafızada tutulacak max satır
+    const liveMaxLines = 1000;
 
     function getQueryParam(name) {
       const url = new URL(window.location.href);
