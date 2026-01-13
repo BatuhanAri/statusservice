@@ -222,6 +222,25 @@
       align-items:center;
       justify-content:space-between;
     }
+    .log-controls{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+
+    .live-toggle{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-size:12px;
+      color:var(--muted);
+      cursor:pointer;
+      user-select:none;
+    }
+
+    .live-toggle input{
+      accent-color:var(--brand2);
+    }
 
     .log-header h2{
       margin:0;
@@ -332,8 +351,13 @@
       <section id="log-panel" aria-label="Log paneli">
         <header class="log-header">
           <h2 id="logTitle">Loglar</h2>
-          <button class="log-toggle" type="button" aria-label="Log panelini gizle">⌄</button>
-        </header>
+          <div class="log-controls">
+            <label class="live-toggle">
+              <input id="live-toggle" type="checkbox" />
+              Live
+            </label>
+            <button class="log-toggle" type="button" aria-label="Log panelini gizle">⌄</button>
+          </div>        </header>
 
         <div class="log-body" id="log-body">
           <div class="log-line log-info">
@@ -366,6 +390,12 @@
     let selectedContainer = null;
     let selectedSystemService = null;
     let systemMeta = []; 
+    // System meta data yükleniyor ve saklanıyor
+    let liveEnabled = false;
+    // Live log refresh için interval ID
+    let liveIntervalId = null;
+    // Live refresh aralığı (ms)
+    const liveIntervalMs = 3000;
 
     function getQueryParam(name) {
       const url = new URL(window.location.href);
@@ -449,6 +479,9 @@
       titleEl.textContent = `Loglar · ${meta ? (meta.name || meta.id) : serviceId}`;
 
       await loadSystemServiceLogs(serviceId);
+      // live refresh ayarla
+      scheduleLiveRefresh();
+
     }
 
     async function loadSystemServiceLogs(serviceId) {
@@ -552,6 +585,9 @@
       titleEl.textContent = `Loglar · ${containerName}`;
 
       await loadContainerLogs(containerName);
+      // live refresh ayarla
+      scheduleLiveRefresh();
+
     }
 
     async function loadContainerLogs(containerName) {
@@ -634,6 +670,34 @@
       if (nextBtn) nextBtn.disabled = (currentPage <= 1);
     }
 
+    // Live log refresh
+    async function refreshSelectedLogs() {
+      if (selectedSystemService) {
+        await loadSystemServiceLogs(selectedSystemService);
+        return;
+      }
+      if (selectedContainer) {
+        await loadContainerLogs(selectedContainer);
+      }
+    }
+
+    function clearLiveInterval() {
+      if (liveIntervalId) {
+        clearInterval(liveIntervalId);
+        liveIntervalId = null;
+      }
+    }
+
+    function scheduleLiveRefresh() {
+      clearLiveInterval();
+      if (!liveEnabled || (!selectedSystemService && !selectedContainer)) {
+        return;
+      }
+      liveIntervalId = setInterval(() => {
+        refreshSelectedLogs();
+      }, liveIntervalMs);
+    }
+
     document.addEventListener('DOMContentLoaded', async () => {
       document.getElementById('log-prev-btn').addEventListener('click', () => {
         currentPage += 1;
@@ -648,6 +712,17 @@
       const logPanel  = document.getElementById('log-panel');
       toggleBtn.addEventListener('click', () => {
         logPanel.classList.toggle('collapsed');
+      });
+      
+      // Live toggle
+      const liveToggle = document.getElementById('live-toggle');
+      liveToggle.addEventListener('change', async (event) => {
+        liveEnabled = event.target.checked;
+        if (liveEnabled) {
+          currentPage = 1;
+          await refreshSelectedLogs();
+        }
+        scheduleLiveRefresh();
       });
 
       // Önce grid'leri yükle
