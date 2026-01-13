@@ -9,6 +9,9 @@ services:
     expose:
       - "8001"
 
+    env_file:
+      - .env
+
     volumes:
       - ./api_py/config.yaml:/app/api_py/config.yaml:ro
       - ./www:/app/www:ro
@@ -22,6 +25,5 @@ services:
       - /var/log/journal:/var/log/journal:ro      
       - /run/log/journal:/run/log/journal:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro       
-
 
     command: uvicorn api_py.app:app --host 0.0.0.0 --port 8001
