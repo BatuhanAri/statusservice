@@ -5,8 +5,8 @@ pipeline {
         GIT_CRED_ID      = 'bitbucket-jenkins'
         NEXUS_CRED_ID    = 'nexus-credentials'
         NEXUS_REPO_URL   = "10.9.111.19:8083"
-        NEXUS_REPO_PATH  = "tci-docker-repo/statusservice"
-        CONTAINER_NAME   = "statusservice"
+        NEXUS_REPO_PATH  = "tci-docker-repo/controllerservive"
+        CONTAINER_NAME   = "controllerservice"
         REMOTE_HOST      = "ifeserver@192.168.0.2"
         
         PATH = "$HOME/.dotnet/tools:/usr/local/bin:/usr/bin:$PATH"
@@ -18,7 +18,7 @@ pipeline {
         stage('Checkout Code (Bitbucket)') {
             steps {
                 git credentialsId: GIT_CRED_ID,
-                    url: 'http://bitbucket.tci.aero/scm/sife_a321_is2/statusservice.git',
+                    url: 'http://bitbucket.tci.aero/scm/sife_a321_is2/conrollerservice.git',
                     branch: 'dev'
             }
         }
@@ -100,30 +100,25 @@ pipeline {
             }
         }
 
-       stage('Deploy to Remote IFESERVER') {
+ stage('Deploy to Remote IFESERVER') {
             steps {
                 script {
                     // 1. İmajı paketle ve gönder
                     sh "docker save ${env.IMAGE_TAG} -o /tmp/${CONTAINER_NAME}.tar"
                     sh "scp -o StrictHostKeyChecking=no /tmp/${CONTAINER_NAME}.tar ${REMOTE_HOST}:/tmp/"
 
-                    // 2. TEMİZLİK OPERASYONU (ROOT İLE) - GÜNCELLENDİ
-                    // Hem api_py hem de www klasörlerini siliyoruz.
+                    // 2. TEMİZLİK OPERASYONU (ROOT İLE)
                     sh """
                         ssh -o StrictHostKeyChecking=no ${REMOTE_HOST} '
-                            # İmajı yükle
                             docker load -i /tmp/${CONTAINER_NAME}.tar
                             
-                            # Docker kullanarak (Root yetkisiyle) hem api_py hem www klasörlerini uçur.
+                            # Eski klasörleri temizle
                             docker run --rm \
                                 -v /home/ifeserver:/host_home \
                                 ${env.IMAGE_TAG} \
                                 rm -rf /host_home/api_py /host_home/www
 
-                            # Klasörleri normal kullanıcı (ifeserver) ile tekrar oluştur.
-                            # Artık sahipleri "ifeserver" olduğu için scp sorunsuz çalışacak.
                             mkdir -p /home/ifeserver/api_py
-                            # www klasörünü scp kendisi oluşturacak, gerekirse mkdir de eklenebilir ama scp -r halleder.
                         '
                     """
 
@@ -132,12 +127,14 @@ pipeline {
                     sh "scp -r -o StrictHostKeyChecking=no ./www ${REMOTE_HOST}:/home/ifeserver/"
 
                     // 4. Uygulamayı Başlat
+                    // DEĞİŞİKLİK BURADA: --env-file eklendi
                     sh """
                         ssh -o StrictHostKeyChecking=no ${REMOTE_HOST} '
                             docker ps -q -f name=${CONTAINER_NAME} | xargs -r docker stop &&
                             docker ps -a -q -f name=${CONTAINER_NAME} | xargs -r docker rm &&
 
                             docker run -d --restart unless-stopped --network host --pid=host \\
+                                --env-file /etc/statusservice/.env \\
                                 -v /home/ifeserver/api_py/config.yaml:/app/api_py/config.yaml:ro \\
                                 -v /home/ifeserver/www:/app/www:ro \\
                                 -v /var/lib/kea/kea-leases4.csv:/var/lib/kea/kea-leases4.csv:ro \\
