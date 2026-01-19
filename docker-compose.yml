@@ -11,7 +11,6 @@ services:
 
     env_file:
       - .env
-      - /etc/statusservice/.env
 
     volumes:
       - ./api_py/config.yaml:/app/api_py/config.yaml:ro

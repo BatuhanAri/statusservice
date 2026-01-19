@@ -99,8 +99,9 @@
 
     main{
       flex:1 0 auto;
-      padding:14px;
-      max-width:1420px;
+      padding:18px;
+      max-width:1800px;
+      width:min(96vw,1800px);
       margin:0 auto 24px;
       display:flex;
       flex-direction:column;
@@ -113,6 +114,9 @@
       border-radius:16px;
       border:1px solid var(--bd);
       padding:10px 12px 12px;
+    }
+     .container-grid.is-hidden{
+      display:none;
     }
     .container-grid-title{
       font-size:.8rem;
@@ -215,6 +219,8 @@
       display:flex;
       flex-direction:column;
       gap:12px;
+      min-height:60vh;
+
     }
 
     .log-header{
@@ -264,10 +270,13 @@
       border-radius:12px;
       padding:8px 10px;
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-      font-size:11px;
-      line-height:1.4;
-      max-height:300px;
+      font-size:14px;
+      line-height:1.6;
+      max-height:65vh;
+      min-height:45vh;
       overflow-y:auto;
+      display:flex;
+      flex-direction:column-reverse;
     }
 
     .log-line{
@@ -336,13 +345,13 @@
   </header>
 
     <main>
-      <section class="container-grid">
+      <section class="container-grid is-hidden">
         <p class="container-grid-title">System Services (journalctl)</p>
         <div id="sysGrid" class="mini-grid">
         </div>
       </section>
 
-      <section class="container-grid">
+       <section class="container-grid is-hidden">
         <p class="container-grid-title">Docker Containers</p>
         <div id="miniGrid" class="mini-grid">
         </div>
@@ -504,8 +513,7 @@
           return;
         }
 
-        // Logları ters çevir (yeni en üstte)
-        allLogLines = lines.slice().reverse();
+        allLogLines = lines.slice();
         currentPage = 1;
         renderLogPage();
       } catch (e) {
@@ -611,8 +619,7 @@
           return;
         }
 
-        // Logları ters çevir (yeni en üstte)
-        allLogLines = lines.slice().reverse();
+        allLogLines = lines.slice();
         currentPage = 1;
         renderLogPage();
       } catch (e) {
