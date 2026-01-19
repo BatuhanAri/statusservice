@@ -19,7 +19,7 @@ DEFAULT_TAIL = 0
 def read_log_file_lines(path: Path, tail: int) -> List[str]:
     """
     Docker 'json-file' log dosyasını satır satır okur.
-    Her satır JSON olduğu için 'time' + 'log' alanlarını birleştirip string üretir.
+    Her satır JSON olduğu için 'log' alanını döndürür.    
     tail > 0 ise, sadece son 'tail' satırı döndürür.
     """
     if not path.exists():
@@ -35,11 +35,7 @@ def read_log_file_lines(path: Path, tail: int) -> List[str]:
             try:
                 obj = json.loads(line)
                 msg = (obj.get("log") or "").rstrip("\n")
-                ts = obj.get("time")
-                if ts:
-                    raw_lines.append(f"{ts} {msg}")
-                else:
-                    raw_lines.append(msg)
+                raw_lines.append(msg)
             except json.JSONDecodeError:
                 # Beklenmedik bir format varsa, satırı olduğu gibi koy
                 raw_lines.append(line)
@@ -57,9 +53,6 @@ def parse_log_line(raw_line: str) -> Optional[str]:
     try:
         obj = json.loads(line)
         msg = (obj.get("log") or "").rstrip("\n")
-        ts = obj.get("time")
-        if ts:
-            return f"{ts} {msg}"
         return msg
     except json.JSONDecodeError:
         return line
