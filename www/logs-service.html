@@ -668,7 +668,7 @@
       const data = await fetchJSON(`${SYSTEM_LOGS_URL}?lines=800`);
       const item = (data.items || []).find(x => x.id === serviceId);
       if (!item || !item.logs) return [];
-      return item.logs.split('\n');
+      return normalizeLogLines(item.logs.split('\n'));
     }
     // Docker logları al
     async function fetchContainerLogLines(containerName) {
@@ -677,8 +677,14 @@
         throw new Error(`Loglar alınamadı: ${res.status}`);
       }
       const data = await res.json();
-      return data.lines || [];
+      return normalizeLogLines(data.lines || []);
     }
+    function normalizeLogLines(lines) {
+      const trimmed = Array.isArray(lines) ? lines.filter((line, index) => {
+        if (line !== '') return true;
+        return index !== lines.length - 1;
+      }) : [];
+      return trimmed.slice().reverse();    }
     // Live log stream
     function closeLiveStream() {
       if (liveSource) {
